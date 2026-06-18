@@ -12,8 +12,8 @@ import { CLASS_KITS, combatCap } from '../lib/gamedata.mjs';
 
 const HEAL_IDS = /holy_light|flash_of_light|lay_on_hands|rejuvenation|renew|healing_wave/;
 
-// A live mob attacking us at (x,0). restless_bones = undead lvl6 (level-appropriate, non-trivial).
-const atk = (id, x) => ({ id, k: 'mob', tid: 'restless_bones', lv: 6, hp: 50, mhp: 80, x, z: 0, dead: false, h: true, aggro: 1 });
+// A live AT-LEVEL mob attacking us at (x,0) — weighted threat 1 each, so aggroLoad == attacker count here.
+const atk = (id, x) => ({ id, k: 'mob', tid: 'restless_bones', lv: 18, hp: 50, mhp: 80, x, z: 0, dead: false, h: true, aggro: 1 });
 
 function mkCtx({ cls = 'paladin', lv = 18, hpFrac = 1, res = 1000, inv = [], aggro = [] } = {}) {
   const mhp = 600;
@@ -24,10 +24,11 @@ function mkCtx({ cls = 'paladin', lv = 18, hpFrac = 1, res = 1000, inv = [], agg
   const w = {
     self, pid: 1,
     mobsAggroOnMe: () => aggro, mobs: () => aggro, hostilesNear: () => [], groundObjects: () => [], players: () => [],
+    aggroLoad: () => aggro.length,                      // at-level attackers → weighted load == count
     pos: () => ({ x: self.x, z: self.z }), dist: (e) => Math.hypot((e.x ?? 0) - self.x, (e.z ?? 0) - self.z),
     faceTo: () => 0, target: () => null,
     // stubs so a healthy run that falls through to target-selection doesn't throw before we read the decision
-    nearestSafeMob: () => null, questMob: () => null, questMobAny: () => null, joinCount: () => 0, joiners: () => [],
+    nearestSafeMob: () => null, questMob: () => null, joinCount: () => 0, joiners: () => [],
   };
   const cmds = [], inputs = [];
   const ctx = {

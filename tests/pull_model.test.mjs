@@ -209,19 +209,34 @@ test('flee-help: a PROXIMITY-woken different-family neighbour raises a wave the 
   assert.equal(w.joinCount(w.ents.get(10), 14), 2, 'proximity-woken humanoid flees and chains to the bandit');
 });
 
-test('questMobAny: cleanest instance IGNORING capacity — the no-kill-spiral escape hatch', () => {
-  // a quest tid present only as a dense pack: the cap-gated questMob refuses it, but questMobAny still returns
-  // the LEAST-dense instance so the brain can dive it as a last resort (progress beats a stall; death is cheap).
-  const packed = worldWith(18, [
-    { id: 20, tid: 'wyrmcult_zealot', lv: 18, x: 40, z: 0 },
-    { id: 21, tid: 'wyrmcult_zealot', lv: 18, x: 42, z: 0 },
-    { id: 22, tid: 'wyrmcult_zealot', lv: 18, x: 41, z: 1 },
+// ── engageCost / aggroLoad: the single winnability metric (target difficulty + cascade vs my capacity). ──
+test('engageCost: a LONE over-level mob costs >1 (its own difficulty counts), a lone at-level costs 1', () => {
+  const w = worldWith(9, [
+    { id: 10, tid: 'gravecaller_cultist', lv: 12, x: 20, z: 0 },   // +3 above (orange) — a long, dangerous solo fight
+    { id: 11, tid: 'ridge_stalker',       lv: 9,  x: 60, z: 0 },   // at level, far (no joiners)
   ]);
-  assert.equal(packed.questMob('wyrmcult_zealot', 18, 1), null, 'cap-gated pick refuses the all-packed tid');
-  const any = packed.questMobAny('wyrmcult_zealot', 18);
-  assert.ok(any && [20, 21, 22].includes(any.id), 'questMobAny returns a live instance regardless of capacity');
-  // no live instance at all → still null (nothing to dive).
-  assert.equal(worldWith(18, []).questMobAny('wyrmcult_zealot', 18), null, 'no instance present → null');
+  assert.ok(w.engageCost(w.ents.get(10), 9) >= 1.75, 'a lone +3 mob already costs ~1.75 (orange) even with zero joiners');
+  assert.equal(w.engageCost(w.ents.get(11), 9), 1, 'a lone at-level mob costs exactly 1');
+  // capacity 1 (single-puller): the at-level lone mob is winnable, the over-level one is NOT.
+  assert.equal(w.questMob('gravecaller_cultist', 9, 1), null, 'over-level lone mob refused at capacity 1');
+});
+
+test('aggroLoad: the flee metric is weighted — a swarm of greys is ~0, three at-level mobs is 3', () => {
+  const greys = worldWith(16, [
+    { id: 10, tid: 'vale_bandit', lv: 5, x: 1, z: 0, aggro: 1 },   // grey attackers (gap 11) — trivial pressure
+    { id: 11, tid: 'mogger_lackey', lv: 6, x: 1, z: 1, aggro: 1 },
+    { id: 12, tid: 'vale_bandit', lv: 5, x: 2, z: 0, aggro: 1 },
+  ]);
+  // mark them as attacking ME (aggro === pid) so mobsAggroOnMe() sees them
+  for (const id of [10, 11, 12]) greys.ents.get(id).aggro = greys.pid;
+  assert.equal(greys.aggroLoad(16), 0, 'three grey attackers exert ~0 weighted load (faceroll, do not flee)');
+  const real = worldWith(14, [
+    { id: 10, tid: 'ridge_stalker', lv: 14, x: 1, z: 0 },
+    { id: 11, tid: 'ridge_stalker', lv: 14, x: 1, z: 1 },
+    { id: 12, tid: 'ridge_stalker', lv: 14, x: 2, z: 0 },
+  ]);
+  for (const id of [10, 11, 12]) real.ents.get(id).aggro = real.pid;
+  assert.equal(real.aggroLoad(14), 3, 'three at-level attackers exert load 3 (> a 2-cap class → flee)');
 });
 
 test('nearestSafeMob: picks the ISOLATED instance and skips the dense cluster', () => {
@@ -244,24 +259,24 @@ test('nearestSafeMob: when EVERY candidate is a pack, return null (wait/relocate
   assert.equal(w.nearestSafeMob(14), null, 'no clean pull → null (the bot moves on instead of diving the pack)');
 });
 
-test('accept policy: pull up to brawl capacity (maxJoin = combatCap-1), matching what the flee rule fights', () => {
+test('accept policy: engageCost ≤ CAPACITY (= combatCap), matching what the weighted flee rule fights', () => {
   const mobs = [
     { id: 10, tid: 'ridge_stalker', lv: 14, x: 20, z: 0 },
-    { id: 11, tid: 'ridge_stalker', lv: 14, x: 23, z: 0 },   // 3yd apart → 1 joiner each
+    { id: 11, tid: 'ridge_stalker', lv: 14, x: 23, z: 0 },   // 3yd apart → joiner each; at-level → cost 1+1 = 2
   ];
-  // maxJoin 0 (a single-puller, e.g. mage, combatCap 1): a 1-joiner pull is OVER capacity → refused. It
-  // single-pulls so it never engages more than it will fight (flee at aggro>1).
-  assert.equal(worldWith(16, mobs).nearestSafeMob(16, 0), null, 'maxJoin 0: a 1-joiner pull is refused (would exceed cap)');
-  // maxJoin 1 (a brawler, e.g. paladin/druid, combatCap 2): a 1-joiner pull is WITHIN capacity → taken, even
-  // hurt and at-level (death is cheap; the flee rule fights a 2-pull, so we engage one).
-  assert.ok(worldWith(14, mobs, { hp: 50 }).nearestSafeMob(14, 1), 'maxJoin 1: 1-joiner pull taken (within brawl capacity)');
-  // a 3-mob cluster (2 joiners) exceeds a brawler's capacity (cap 2) → refused; it would pull→flee→reset.
+  // capacity 1 (a single-puller, e.g. mage, combatCap 1): a 2-cost pull (target + 1 at-level joiner) is OVER
+  // capacity → refused. It single-pulls so it never engages more than it will fight (flee when load > 1).
+  assert.equal(worldWith(16, mobs).nearestSafeMob(16, 1), null, 'capacity 1: cost-2 pull refused');
+  // capacity 2 (a brawler, e.g. paladin/druid, combatCap 2): cost 2 ≤ 2 → taken, even hurt (death is cheap; the
+  // flee rule fights a weighted-load-2 brawl, so we engage it).
+  assert.ok(worldWith(14, mobs, { hp: 50 }).nearestSafeMob(14, 2), 'capacity 2: cost-2 pull taken');
+  // a 3-mob at-level cluster → cost 1 + 2 = 3 > capacity 2 → refused; it would pull→flee→reset.
   const cluster = [
     { id: 20, tid: 'ridge_stalker', lv: 14, x: 20, z: 0 },
     { id: 21, tid: 'ridge_stalker', lv: 14, x: 22, z: 0 },
     { id: 22, tid: 'ridge_stalker', lv: 14, x: 21, z: 1 },
   ];
-  assert.equal(worldWith(16, cluster).nearestSafeMob(16, 1), null, 'maxJoin 1: a 2-joiner cluster exceeds capacity → refused');
+  assert.equal(worldWith(16, cluster).nearestSafeMob(16, 2), null, 'capacity 2: a cost-3 cluster exceeds capacity → refused');
 });
 
 test('nearestSafeMob: elites/bosses/rares are skipped by data, and greys (0 xp) are excluded', () => {
