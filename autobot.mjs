@@ -206,6 +206,13 @@ export function makeSoloBot({ base = BASE, cls = CLASS, kit = KIT, name = NAME, 
     } catch {}
     // (B) death-loop escalation: deaths accumulating with no xp/level gain
     const deathsSinceXp = session.deaths - deathsAtProgress;
+    // (B0) RETREAT-TO-OUT-LEVEL: 3 deaths with no xp means the current target — usually a quest camp above our
+    // weight (a dense troll pack, an over-level mob) — is unwinnable AT THIS LEVEL. Flag decide() to DROP quests
+    // and grind the SAFEST winnable camp until we gain a LEVEL, then resume the quest stronger. Sticky to a level
+    // (not just xp) so one easy kill doesn't bounce us straight back onto the death camp; clears on level-up.
+    if (deathsSinceXp >= 3 && ctx.outLevelLv == null) { ctx.outLevelLv = s.lv ?? 1; pushLog('🪜 Камень не по зубам — откатываюсь на безопасный гринд, докачаюсь и вернусь'); }
+    if (ctx.outLevelLv != null && (s.lv ?? 1) > ctx.outLevelLv) ctx.outLevelLv = null;   // leveled up → resume quests
+    ctx.outLevel = ctx.outLevelLv != null;
     if (deathsSinceXp >= 6 && !deathLoopSoftReset) { pushLog('⚠ Цикл смертей без опыта — сбрасываю навигацию/память'); ctx.nav = { stuck: 0, lastX: 0, lastZ: 0, wp: (ctx.nav?.wp || 0) + 1, anchorX: undefined }; ctx.qmemo = {}; deathLoopSoftReset = true; }
     if (deathsSinceXp >= 12) { console.error('[watchdog] death-loop, 12+ deaths with no xp — recovering'); try { conn.close(); } catch {} onWedge(); return; }
     // (A) general-wedge escalation
