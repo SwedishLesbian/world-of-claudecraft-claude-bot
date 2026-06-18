@@ -155,17 +155,46 @@ test('flee-help CHAINS: B pulled by A then pulls C beyond A’s own reach', () =
   assert.equal(broken.joinCount(broken.ents.get(10), 16), 1, 'chain stops when the next link is out of flee radius');
 });
 
-test('nearestSafeMob: an at-level mob standing in a LOW-LEVEL same-family camp is refused (the flee swarm)', () => {
-  // The classic "looked clean, killed it, got swarmed" death: a lv16 cultist (in-band, pullable) ringed by
-  // two TRIVIAL lv5 humanoids. Old model saw 0 joiners (trivial→no proximity, diff tid→no social) and engaged;
-  // the kill then called both via flee-help. A paladin (maxJoin = combatCap-1 = 1) must now REFUSE it.
+// ── THREAT-WEIGHTED capacity: the pull model counts BODIES, but capacity is gated by DIFFICULTY. ──
+test('threat-weight: a lvl16 BRAWLS a low-level (grey) same-family camp — bodies counted, but weak ones are cheap', () => {
+  // a lv16 cultist (in-band) ringed by two GREY lv5/6 humanoids. They DO join (flee-help, raw count 2), but
+  // they're trivial threat (gap 10/11 → weight 0) → zero brawl LOAD → a plate paladin facerolls them. The old
+  // body-count gate wrongly refused this easy pull; difficulty-weighting takes it (this is the "easy quest").
   const w = worldWith(16, [
     { id: 10, tid: 'gravecaller_cultist', lv: 16, x: 20, z: 0 },
-    { id: 11, tid: 'vale_bandit',   lv: 5, x: 22, z: 0 },   // trivial, within 8yd flee-help
-    { id: 12, tid: 'mogger_lackey', lv: 6, x: 18, z: 1 },   // trivial, within 8yd flee-help
+    { id: 11, tid: 'vale_bandit',   lv: 5, x: 22, z: 0 },   // grey, within 8yd flee-help
+    { id: 12, tid: 'mogger_lackey', lv: 6, x: 18, z: 1 },   // grey, within 8yd flee-help
   ]);
-  assert.equal(w.joinCount(w.ents.get(10), 16), 2, 'killing the cultist calls both camp humanoids');
-  assert.equal(w.nearestSafeMob(16, 1), null, 'paladin (maxJoin 1) refuses the 2-flee-add pull → grind elsewhere, return stronger');
+  assert.equal(w.joinCount(w.ents.get(10), 16), 2, 'TWO bodies still join (raw count unchanged)');
+  assert.equal(w.brawlLoad(w.ents.get(10), 16), 0, 'but both are grey → zero brawl LOAD');
+  assert.equal(w.nearestSafeMob(16, 1)?.id, 10, 'so a paladin BRAWLS the cultist + 2 grey adds (does the easy quest)');
+});
+
+test('threat-weight: a melee brawls a GREEN low-level pack (the easy-quest case), but an EQUAL-level pack is still refused', () => {
+  // lvl9 vs a tunnel_rat (kobold, flees) cluster at lv5-6 → green/grey (gap 3-4) → light load → TAKEN.
+  const green = worldWith(9, [
+    { id: 10, tid: 'tunnel_rat', lv: 6, x: 20, z: 0 },   // gap 3 → 0.5
+    { id: 11, tid: 'tunnel_rat', lv: 5, x: 22, z: 0 },   // gap 4 → 0.5
+  ]);
+  assert.ok(green.nearestSafeMob(9, 1), 'a paladin brawls the green rat pack instead of refusing it (easy quest doable)');
+  // same geometry but the rats are AT our level (gap 0 → full weight) → load 1 per add → a 2-add cluster refused.
+  const equal = worldWith(6, [
+    { id: 10, tid: 'tunnel_rat', lv: 6, x: 20, z: 0 },
+    { id: 11, tid: 'tunnel_rat', lv: 6, x: 22, z: 0 },
+    { id: 12, tid: 'tunnel_rat', lv: 6, x: 21, z: 1 },
+  ]);
+  assert.equal(equal.nearestSafeMob(6, 1), null, 'an equal-level 3-pack still exceeds capacity → refused (death-reduction intact)');
+});
+
+test('threat-weight: an UNDER-levelled bot vs an OVER-level dense camp stays REFUSED (real death case protected)', () => {
+  // lvl7 bot, a lv12 cultist + two lv12 same-family adds (gap -5 → FULL weight each) → load 2 > maxJoin 1.
+  const w = worldWith(7, [
+    { id: 10, tid: 'gravecaller_cultist',  lv: 12, x: 20, z: 0 },
+    { id: 11, tid: 'gravecaller_summoner', lv: 12, x: 22, z: 0 },
+    { id: 12, tid: 'gravecaller_mender',   lv: 12, x: 19, z: 1 },
+  ]);
+  assert.ok(w.brawlLoad(w.ents.get(10), 7) >= 2, 'over-level adds carry full weight');
+  assert.equal(w.questMob('gravecaller_cultist', 7, 1), null, 'under-levelled bot refuses the over-level swarm — stays protected');
 });
 
 test('flee-help: a PROXIMITY-woken different-family neighbour raises a wave the (non-fleeing) target never would', () => {
