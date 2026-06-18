@@ -177,7 +177,7 @@ export function makeSoloBot({ base = BASE, cls = CLASS, kit = KIT, name = NAME, 
   // timer every cycle); (C) CONNECTION backstop = never reached 'ready' at boot (the old `if(!s) return`
   // meant a never-connected zombie could never trip an exit, defeating run-forever.sh).
   let lastProgressMs = Date.now(), lastPos = null, lastXp = -1, lastLv = -1;
-  let deathsAtProgress = 0, deathLoopSoftReset = false, bootMs = Date.now(), everReady = false;
+  let deathsAtProgress = 0, deathLoopSoftReset = false, bootMs = Date.now(), everReady = false, lastXpMs = Date.now();
   // the CALLER runs this on a ~5s interval. On an unrecoverable wedge it calls onWedge() (default: exit).
   function watchdogTick() {
     const now = Date.now();
@@ -186,7 +186,7 @@ export function makeSoloBot({ base = BASE, cls = CLASS, kit = KIT, name = NAME, 
     const s = world.self; if (!s) return;
     const moved = lastPos && Math.hypot((s.x ?? 0) - lastPos.x, (s.z ?? 0) - lastPos.z) > 3;
     const progressed = (s.lv ?? 0) > lastLv || ((s.lv ?? 0) === lastLv && (s.xp ?? 0) > lastXp);  // real xp/level gain
-    if (progressed) { deathsAtProgress = session.deaths; deathLoopSoftReset = false; }    // (B) reset on real progress
+    if (progressed) { deathsAtProgress = session.deaths; deathLoopSoftReset = false; lastXpMs = now; }    // (B) reset on real progress
     lastLv = s.lv ?? lastLv; lastXp = s.xp ?? lastXp;
     if (moved || progressed || (now - (ctx.lastKill ?? 0) < 120000)) lastProgressMs = now; // (A) — NOT s.dead (death+walk-back IS the spiral)
     lastPos = { x: s.x, z: s.z };
@@ -210,7 +210,13 @@ export function makeSoloBot({ base = BASE, cls = CLASS, kit = KIT, name = NAME, 
     // weight (a dense troll pack, an over-level mob) — is unwinnable AT THIS LEVEL. Flag decide() to DROP quests
     // and grind the SAFEST winnable camp until we gain a LEVEL, then resume the quest stronger. Sticky to a level
     // (not just xp) so one easy kill doesn't bounce us straight back onto the death camp; clears on level-up.
-    if (deathsSinceXp >= 3 && ctx.outLevelLv == null) { ctx.outLevelLv = s.lv ?? 1; pushLog('🪜 Камень не по зубам — откатываюсь на безопасный гринд, докачаюсь и вернусь'); }
+    // Trigger on a death-loop (3 deaths) OR a STALEMATE — no xp for 120s. The mana fix makes a too-hard camp
+    // survivable, so the bot often neither dies fast NOR kills: it bleeds at trolls, or flees a dense pack
+    // (murlocs link a 5-pull) and rests forever — 0 kills, 0 deaths. A pure no-xp stall catches every "winning
+    // nothing" case; 120s is well past a normal kill cadence (~30-90s), and out-level just grinds the safest
+    // camp (harmless if it ever false-fires) and clears on the next level-up.
+    const stuckAtCamp = deathsSinceXp >= 3 || now - lastXpMs > 120000;
+    if (stuckAtCamp && ctx.outLevelLv == null) { ctx.outLevelLv = s.lv ?? 1; pushLog('🪜 Камень не по зубам — откатываюсь на безопасный гринд, докачаюсь и вернусь'); }
     if (ctx.outLevelLv != null && (s.lv ?? 1) > ctx.outLevelLv) ctx.outLevelLv = null;   // leveled up → resume quests
     ctx.outLevel = ctx.outLevelLv != null;
     if (deathsSinceXp >= 6 && !deathLoopSoftReset) { pushLog('⚠ Цикл смертей без опыта — сбрасываю навигацию/память'); ctx.nav = { stuck: 0, lastX: 0, lastZ: 0, wp: (ctx.nav?.wp || 0) + 1, anchorX: undefined }; ctx.qmemo = {}; deathLoopSoftReset = true; }
