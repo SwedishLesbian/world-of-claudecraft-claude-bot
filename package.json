@@ -1,0 +1,22 @@
+{
+  "name": "woc-autobot",
+  "version": "4.35.0",
+  "private": true,
+  "type": "module",
+  "description": "Autonomous World of Claudecraft bot — standalone. Runtime needs only `ws` + the committed *.generated.mjs data. The game source is read ONLY at generation time (npm run gen), from GAME_SRC or the sibling ../../world-of-claudecraft.",
+  "scripts": {
+    "start": "node autobot.mjs",
+    "test": "node --test \"tests/*.test.mjs\"",
+    "gen": "node scripts/gen_bot_mobs.mjs && node scripts/gen_bot_items.mjs && node scripts/gen_bot_abilities.mjs",
+    "gen:mobs": "node scripts/gen_bot_mobs.mjs",
+    "gen:items": "node scripts/gen_bot_items.mjs",
+    "gen:abilities": "node scripts/gen_bot_abilities.mjs"
+  },
+  "dependencies": {
+    "ws": "^8.21.0"
+  },
+  "devDependencies": {
+    "esbuild": "^0.28.1",
+    "puppeteer-core": "^25.1.0"
+  }
+}

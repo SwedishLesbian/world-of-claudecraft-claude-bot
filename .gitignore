@@ -1,0 +1,19 @@
+# ── secrets — NEVER commit ──────────────────────────────────────────────
+.env
+.env.bot
+.tokens/
+.cf-profile/
+
+# ── dependencies (re-installable: npm install) ──────────────────────────
+node_modules/
+
+# ── runtime state + logs (machine-local, regenerated) ───────────────────
+*.log
+state.json
+deathblocks.json
+settings.json
+lib/_*_bundle.mjs
+
+# ── OS / editor / tooling ───────────────────────────────────────────────
+.DS_Store
+.claude/
