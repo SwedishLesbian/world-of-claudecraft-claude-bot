@@ -1,0 +1,6 @@
+{
+  "hash": "3edd74734aafdcb09e70f742b7f65aca4c06078ad259b303216adaa85dbad196",
+  "files": 25,
+  "gameCommit": "8061c2718d65",
+  "source": "src/sim/**/*.ts"
+}
