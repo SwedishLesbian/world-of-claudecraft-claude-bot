@@ -125,17 +125,17 @@ export function makeSoloBot({ base = BASE, cls = CLASS, kit = KIT, name = NAME, 
       else if (ev.type === 'levelup') {
         pushLog(`🎉 НОВЫЙ УРОВЕНЬ: ${ev.level}!`);
         ctx.triedEquip.clear();                                  // re-try any equip that transiently failed (a one-off reject shouldn't block re-equipping forever)
-        ctx.deferredQuests?.clear(); ctx.killq = null;           // STRONGER now → retry the death-trap/dense camps we deferred (retry on levelup, not on a dumb 3min timer that re-throws us in before we've grown)
+        ctx.deferredQuests?.clear(); ctx.tooHard?.clear();       // STRONGER now → retry collect/too-hard camps we skipped (tooHard also self-clears on the level change, this is just belt-and-braces)
       }
       else if (ev.type === 'questDone') { session.questsDone++; pushLog(`✅ Квест выполнен: ${ruQuest(ev.questId)}`); }
       else if (ev.type === 'questReady') pushLog(`Квест готов к сдаче: ${ruQuest(ev.questId)}`);
       else if (ev.type === 'questAccepted') pushLog(`📜 Принят квест: ${ruQuest(ev.questId)}`);
       else if (ev.type === 'playerDeath') {
-        // Death is near-free (full-HP graveyard respawn, no xp/gold/durability loss). With clean pulls
-        // deaths are rare; just respawn and carry on — no death-block list (the joinCount pull model is
-        // what keeps us out of unwinnable packs, not a reactive avoid-list). ctx.deathCount lets the
-        // quest engine give up FAST on a death-trap camp (defer after a few deaths, not just a 2min stall).
-        session.deaths++; ctx.deathCount = (ctx.deathCount ?? 0) + 1; pushLog('💀 Погиб — воскресаю на кладбище');
+        // Death is near-free (full-HP graveyard respawn, no xp/gold/durability loss). With the winnability
+        // model (engageCost ≤ capacity) the bot doesn't pull packs it can't win, so deaths are rare; just
+        // respawn and carry on — no death-block list, no death counter (a too-hard camp is skipped by the
+        // live cost test + the level-keyed tooHard mark, not by counting deaths).
+        session.deaths++; pushLog('💀 Погиб — воскресаю на кладбище');
       }
       else if (ev.type === 'partyInvite') { pushLog(`Приглашение в группу от ${ev.fromName} — принимаю`); conn.cmd({ cmd: 'paccept' }); }
     }
