@@ -73,6 +73,7 @@ bot/
     zone1.mjs zone2.mjs zone3.mjs   # per-zone quest/NPC/camp/object data (all 3 zones)
     ru.mjs               # Russian names (mobs/quests/items) + XP table
     items.generated.mjs  # item display metadata, generated from src/sim/data.ts via esbuild
+    vendors.generated.mjs # per-vendor stock + position, generated from NPCS.vendorItems (drives buyGear)
     dashboard.mjs        # local HTTP+WS server + embedded dashboard page
   online_bot.mjs         # v1 simple grinder (kept for reference)
 ```
