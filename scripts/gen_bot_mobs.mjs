@@ -10,6 +10,7 @@ import { build } from 'esbuild';
 import { writeFileSync, rmSync, existsSync } from 'node:fs';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { dirname, resolve } from 'node:path';
+import { affixesFromTemplate } from '../lib/affixes.mjs';
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '..');     // = the bot/ folder (this script is in bot/scripts/)
 // The game source lives SEPARATELY now (the bot is standalone). Point at it via GAME_SRC, else the sibling
@@ -29,12 +30,16 @@ for (const [id, d] of Object.entries(MOBS)) {
   if (d.elite) o.elite = true;
   if (d.boss) o.boss = true;
   if (d.rare) o.rare = true;
+  const affixes = affixesFromTemplate(d);   // v0.10.0 on-template combat affixes the winnability model weighs
+  if (affixes) o.affixes = affixes;
   out[id] = o;
 }
 const body = `// AUTO-GENERATED from src/sim/data.ts by scripts/gen_bot_mobs.mjs — per-template aggro data for the\n`
   + `// bot's universal pull model (proximity radius = clamp(4,20, aggroRadius + (mobLv-myLv)*1.5); social\n`
-  + `// pull = same-template within the family radius). Do not hand-edit.\nexport const MOB_TEMPLATES = ${JSON.stringify(out)};\n`;
+  + `// pull = same-template within the family radius) PLUS the v0.10.0 combat affixes {kind:procChance} the\n`
+  + `// winnability model weighs (severity/gating in lib/affixes.mjs). Do not hand-edit.\nexport const MOB_TEMPLATES = ${JSON.stringify(out)};\n`;
 writeFileSync(outFile, body);
 const n = Object.keys(out).length;
 const elites = Object.values(out).filter((d) => d.elite || d.boss).length;
-console.log(`[gen] wrote ${n} mob templates to lib/mobs.generated.mjs (${elites} elite/boss)`);
+const affixed = Object.values(out).filter((d) => d.affixes).length;
+console.log(`[gen] wrote ${n} mob templates to lib/mobs.generated.mjs (${elites} elite/boss, ${affixed} affixed)`);
