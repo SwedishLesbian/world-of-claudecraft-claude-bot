@@ -53,6 +53,19 @@ test('survival: critically low with NO heal available FLEES even within capacity
   assert.equal(ctx.fleeing, true, 'sets fleeing at <CRIT_HP even at aggro==cap (no more tank-to-death at 15%)');
 });
 
+test('survival: a LONE mob is NEVER fled even at critical HP (turn and fight/heal it, do not bare our back)', () => {
+  const { ctx } = mkCtx({ hpFrac: 0.10, aggro: [atk(10, 4)] });   // 10% HP, ONE attacker
+  run(ctx);
+  assert.notEqual(ctx.fleeing, true, 'one attacker is always winnable — fleeing only gets us chipped from behind');
+});
+
+test('survival: fleeing RELEASES the moment a pack thins to a lone mob (no fleeing the last straggler to death)', () => {
+  const { ctx } = mkCtx({ hpFrac: 0.11, aggro: [atk(10, 4)] });   // mid-flee, pack already down to 1, still hurt
+  ctx.fleeing = true;
+  run(ctx);
+  assert.equal(ctx.fleeing, false, 'down to 1 attacker → stop fleeing and turn (was fleeing a single mob to 6%)');
+});
+
 test('survival: a HEALTHY brawl within capacity is NOT fled (kills-not-caution preserved)', () => {
   const { ctx } = mkCtx({ hpFrac: 0.90, aggro: [atk(10, 4), atk(11, 5)] });  // 90% HP, 2 attackers
   run(ctx);
