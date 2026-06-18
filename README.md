@@ -72,8 +72,9 @@ bot/
     gamedata.mjs         # merges all zones; derives consumables; per-class kits; zone helpers
     zone1.mjs zone2.mjs zone3.mjs   # per-zone quest/NPC/camp/object data (all 3 zones)
     ru.mjs               # Russian names (mobs/quests/items) + XP table
-    items.generated.mjs  # item display metadata, generated from src/sim/data.ts via esbuild
-    vendors.generated.mjs # per-vendor stock + position, generated from NPCS.vendorItems (drives buyGear)
+    *.generated.mjs      # game data projected from src/sim/data.ts by scripts/gen_bot_*.mjs (run `npm run gen`):
+                         #   mobs / items / abilities / vendors (buyGear stock+pos) /
+                         #   density (pack-density threat mult) / dungeons (party-door keep-out)
     dashboard.mjs        # local HTTP+WS server + embedded dashboard page
   online_bot.mjs         # v1 simple grinder (kept for reference)
 ```
@@ -127,5 +128,7 @@ Env: `FLEET_CLASSES` (csv), `FLEET_USER` (account prefix), `FLEET_PASS`, `FLEET_
   `autobot.mjs` is single-account. Check the project Discord for any bot policy before long runs.
 - **Credentials** are never hardcoded: put them in `bot/.env.bot` (copy `bot/.env.bot.example`).
   The dashboard binds to `127.0.0.1` and requires a per-run token (set `DASH_HOST=0.0.0.0` to expose it).
-- To regenerate `items.generated.mjs`: `npx esbuild` a tiny entry importing `ITEMS` from
-  `src/sim/data.ts` and dump JSON (see git history of this folder).
+- To regenerate the `lib/*.generated.mjs` data after a game update: `npm run gen` (esbuild-bundles the
+  game's `src/sim/data.ts`, projects each table, and re-stamps `gamedata.version.json`). Point at the game
+  source via `GAME_SRC=/path/to/world-of-claudecraft`, else the sibling checkout. `npm run gen:check` is the
+  staleness guard — it goes RED when the game source has drifted from the committed data (re-run `npm run gen`).
