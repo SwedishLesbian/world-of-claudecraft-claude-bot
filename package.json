@@ -7,12 +7,13 @@
   "scripts": {
     "start": "node autobot.mjs",
     "test": "node --test \"tests/*.test.mjs\"",
-    "gen": "node scripts/gen_bot_mobs.mjs && node scripts/gen_bot_items.mjs && node scripts/gen_bot_vendors.mjs && node scripts/gen_bot_density.mjs && node scripts/gen_bot_abilities.mjs && node scripts/check_gamedata.mjs --write",
+    "gen": "node scripts/gen_bot_mobs.mjs && node scripts/gen_bot_items.mjs && node scripts/gen_bot_vendors.mjs && node scripts/gen_bot_density.mjs && node scripts/gen_bot_dungeons.mjs && node scripts/gen_bot_abilities.mjs && node scripts/check_gamedata.mjs --write",
     "gen:check": "node scripts/check_gamedata.mjs",
     "gen:mobs": "node scripts/gen_bot_mobs.mjs",
     "gen:items": "node scripts/gen_bot_items.mjs",
     "gen:vendors": "node scripts/gen_bot_vendors.mjs",
     "gen:density": "node scripts/gen_bot_density.mjs",
+    "gen:dungeons": "node scripts/gen_bot_dungeons.mjs",
     "gen:abilities": "node scripts/gen_bot_abilities.mjs"
   },
   "dependencies": {
