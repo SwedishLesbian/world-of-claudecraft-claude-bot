@@ -11,11 +11,10 @@ settings) at `http://localhost:8088`.
 ## Run
 
 ```bash
-cd ..              # repo root
 npm install
-node bot/autobot.mjs                 # local server (needs npm run db:up && npm run server)
+node autobot.mjs                 # local server (needs npm run db:up && npm run server)
 # live realm:
-SERVER_URL=https://worldofclaudecraft.com node bot/autobot.mjs
+SERVER_URL=https://worldofclaudecraft.com node autobot.mjs
 # then open the dashboard:
 open http://localhost:8088
 ```
@@ -23,9 +22,9 @@ open http://localhost:8088
 24/7 with auto-restart on crash (creds baked into the script):
 
 ```bash
-nohup bot/run-forever.sh >/dev/null 2>&1 &     # start, survives logout
-tail -f bot/live.log                            # watch
-pkill -f run-forever.sh; pkill -f bot/autobot.mjs   # stop
+nohup run-forever.sh >/dev/null 2>&1 &     # start, survives logout
+tail -f live.log                            # watch
+pkill -f run-forever.sh; pkill -f autobot.mjs   # stop
 ```
 
 ## Dashboard (http://localhost:8088)
@@ -46,7 +45,7 @@ Live, updates ~3×/sec over WebSocket:
   - **Пауза** — встать на месте (не выходя из мира).
   - Также показывает: **зону**, **форму** (медведь/кот), **бафы**.
 
-Настройки сохраняются в `bot/settings.json` и переживают перезапуск. `DASH_PORT=9000` меняет порт дашборда (если 8088 занят, бот всё равно играет — просто без дашборда).
+Настройки сохраняются в `settings.json` и переживают перезапуск. `DASH_PORT=9000` меняет порт дашборда (если 8088 занят, бот всё равно играет — просто без дашборда).
 
 ## Env
 
@@ -61,22 +60,20 @@ Live, updates ~3×/sec over WebSocket:
 ## Layout
 
 ```
-bot/
-  autobot.mjs            # entry: auth, connect, 5Hz loop, dashboard wiring, process guards
-  run-forever.sh         # 24/7 crash-restart wrapper
-  settings.json          # persisted settings (created/updated from the dashboard)
-  lib/
-    connection.mjs       # WS+REST transport, reconnect/backoff, snapshot merge
-    world.mjs            # perception over the merged snapshot
-    brain.mjs            # priority tree (survive→help→loot→quest→grind), all-class combat, bear form, anti-stall
-    gamedata.mjs         # merges all zones; derives consumables; per-class kits; zone helpers
-    zone1.mjs zone2.mjs zone3.mjs   # per-zone quest/NPC/camp/object data (all 3 zones)
-    ru.mjs               # Russian names (mobs/quests/items) + XP table
-    *.generated.mjs      # game data projected from src/sim/data.ts by scripts/gen_bot_*.mjs (run `npm run gen`):
-                         #   mobs / items / abilities / vendors (buyGear stock+pos) /
-                         #   density (pack-density threat mult) / dungeons (party-door keep-out)
-    dashboard.mjs        # local HTTP+WS server + embedded dashboard page
-  online_bot.mjs         # v1 simple grinder (kept for reference)
+autobot.mjs            # entry: auth, connect, 5Hz loop, dashboard wiring, process guards
+run-forever.sh         # 24/7 crash-restart wrapper
+settings.json          # persisted settings (created/updated from the dashboard)
+lib/
+  connection.mjs       # WS+REST transport, reconnect/backoff, snapshot merge
+  world.mjs            # perception over the merged snapshot
+  brain.mjs            # priority tree (survive→help→loot→quest→grind), all-class combat, bear form, anti-stall
+  gamedata.mjs         # merges all zones; derives consumables; per-class kits; zone helpers
+  zone1.mjs zone2.mjs zone3.mjs   # per-zone quest/NPC/camp/object data (all 3 zones)
+  ru.mjs               # Russian names (mobs/quests/items) + XP table
+  *.generated.mjs      # game data projected from src/sim/data.ts by scripts/gen_bot_*.mjs (run `npm run gen`):
+                       #   mobs / items / abilities / vendors (buyGear stock+pos) /
+                       #   density (pack-density threat mult) / dungeons (party-door keep-out)
+  dashboard.mjs        # local HTTP+WS server + embedded dashboard page
 ```
 
 ## 5-bot fleet — dungeons + World Market (`fleet.mjs`)
@@ -85,11 +82,11 @@ A coordinated party of 5 (default **warrior tank · priest + paladin heals · ma
 that levels together, runs dungeons by role, farms bosses, and sells rare/epic on the market.
 
 ```bash
-node bot/fleet.mjs                       # local server; dashboard at http://localhost:8099
-SERVER_URL=https://worldofclaudecraft.com node bot/fleet.mjs    # live
-nohup bot/run-fleet.sh >/dev/null 2>&1 & # 24/7 (defaults to live)
+node fleet.mjs                       # local server; dashboard at http://localhost:8099
+SERVER_URL=https://worldofclaudecraft.com node fleet.mjs    # live
+nohup run-fleet.sh >/dev/null 2>&1 & # 24/7 (defaults to live)
 # fast local test (server with ALLOW_DEV_COMMANDS=1):
-FLEET_DEV_LEVEL=10 FLEET_DEV_TP="80,84" node bot/fleet.mjs      # jumps the party to lvl 10 at the crypt door
+FLEET_DEV_LEVEL=10 FLEET_DEV_TP="80,84" node fleet.mjs      # jumps the party to lvl 10 at the crypt door
 ```
 
 How it works (`lib/fleet_coordinator.mjs`):
@@ -126,9 +123,13 @@ Env: `FLEET_CLASSES` (csv), `FLEET_USER` (account prefix), `FLEET_PASS`, `FLEET_
 - **Good citizen** on the live realm: skips mobs tapped by others, no PvP/duels, pro-social
   healing. Note the optional `fleet.mjs` runs **5 accounts** (party leveling) — only the solo
   `autobot.mjs` is single-account. Check the project Discord for any bot policy before long runs.
-- **Credentials** are never hardcoded: put them in `bot/.env.bot` (copy `bot/.env.bot.example`).
+- **Credentials** are never hardcoded: put them in `.env.bot` (copy `.env.bot.example`).
   The dashboard binds to `127.0.0.1` and requires a per-run token (set `DASH_HOST=0.0.0.0` to expose it).
 - To regenerate the `lib/*.generated.mjs` data after a game update: `npm run gen` (esbuild-bundles the
   game's `src/sim/data.ts`, projects each table, and re-stamps `gamedata.version.json`). Point at the game
   source via `GAME_SRC=/path/to/world-of-claudecraft`, else the sibling checkout. `npm run gen:check` is the
   staleness guard — it goes RED when the game source has drifted from the committed data (re-run `npm run gen`).
+  You don't need any of this just to run the bot — the generated files (`lib/*.generated.mjs`) are already
+  committed to this repo. `npm run gen` is only needed to refresh them after a game-data update, and it
+  requires the private game source checked out as a sibling directory (`../world-of-claudecraft`) or a
+  `GAME_SRC` env var pointing to it.
