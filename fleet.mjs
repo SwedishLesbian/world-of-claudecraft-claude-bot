@@ -32,7 +32,6 @@ const IS_LOCAL = /localhost|127\.0\.0\.1/.test(BASE);
 // constant; a real server MUST supply FLEET_PASS via bot/.env.bot. (Distinct per-account passwords
 // are a follow-up — would need re-registering the live sl_fleet_* accounts.)
 const PASS = process.env.FLEET_PASS ?? (IS_LOCAL ? 'localdev_fleet_pw' : null);
-if (!PASS) { console.error('[fleet] FATAL: FLEET_PASS is unset for a non-local server. Set it in bot/.env.bot (see bot/.env.bot.example).'); process.exit(1); }
 const DASH_PORT = Number(process.env.FLEET_DASH_PORT ?? 8099);
 // character names, klod-/bot-themed, mapped by index to FLEET_CLASSES (tank/heal/druid/mage/lock).
 // (server name rule: letters only — keep them simple.) Extra names cover larger custom comps.
@@ -44,33 +43,40 @@ async function rest(path, body, token, method = 'POST') {
   const r = await fetch(BASE + path, { method, headers: { 'Content-Type': 'application/json', ...(token ? { Authorization: `Bearer ${token}` } : {}) }, body: method === 'GET' ? undefined : JSON.stringify(body ?? {}) });
   return { status: r.status, body: await r.json().catch(() => ({})) };
 }
-async function authenticate(user, cls, name, forceFresh) {
+async function authenticate(base, user, password, cls, name, forceFresh) {
   // reuse a cached disk token on (re)start instead of /api/login — the key fix for the 5-bot 429 storm
   // (all bots re-logging-in at once from one IP). forceFresh (a rejected token) bypasses the cache.
   if (!forceFresh) { const c = loadToken(user); if (c) return { token: c.token, charId: c.charId, name }; }
-  let r = await rest('/api/login', { username: user, password: PASS });
-  if (r.status !== 200) { r = await rest('/api/register', { username: user, password: PASS }); if (r.status !== 200) throw new Error(`auth ${user}: ${r.status} ${JSON.stringify(r.body)}`); }
+  const request = async (path, body, token, method = 'POST') => {
+    const r = await fetch(base + path, { method, headers: { 'Content-Type': 'application/json', ...(token ? { Authorization: `Bearer ${token}` } : {}) }, body: method === 'GET' ? undefined : JSON.stringify(body ?? {}) });
+    return { status: r.status, body: await r.json().catch(() => ({})) };
+  };
+  let r = await request('/api/login', { username: user, password });
+  if (r.status !== 200) { r = await request('/api/register', { username: user, password }); if (r.status !== 200) throw new Error(`auth ${user}: ${r.status} ${JSON.stringify(r.body)}`); }
   const token = r.body.token;
-  const list = await rest('/api/characters', null, token, 'GET');
+  const list = await request('/api/characters', null, token, 'GET');
   let ch = (list.body.characters ?? []).find((c) => c.class === cls);
   if (!ch) {
     const rnd = () => 'abcdefghijklmnopqrstuvwxyz'[Math.floor(Math.sqrt(3) * 1e6 + Date.now()) % 26];
     let made, nm = name;
-    for (let i = 0; i < 6; i++) { made = await rest('/api/characters', { name: nm, class: cls }, token); if (made.status === 200) break; if (made.status === 409 || /taken/i.test(made.body?.error ?? '')) { nm = (name.slice(0, 12) + rnd() + rnd() + rnd()).slice(0, 16); continue; } throw new Error(`char ${user}: ${made.status} ${JSON.stringify(made.body)}`); }
+    for (let i = 0; i < 6; i++) { made = await request('/api/characters', { name: nm, class: cls }, token); if (made.status === 200) break; if (made.status === 409 || /taken/i.test(made.body?.error ?? '')) { nm = (name.slice(0, 12) + rnd() + rnd() + rnd()).slice(0, 16); continue; } throw new Error(`char ${user}: ${made.status} ${JSON.stringify(made.body)}`); }
     if (made.status !== 200) throw new Error(`char ${user}: ${JSON.stringify(made.body)}`); ch = made.body;
   }
   saveToken(user, token, ch.id);   // cache for restart reuse (no /api/login next boot)
   return { token, charId: ch.id, name: ch.name };
 }
 
-export function makeBot(i, cls) {
-  const user = `${UPREFIX}_${i}`;
-  const name = (NAMES[i] ?? `Botto${i}`);
+export function makeBot(i, cls, options = {}) {
+  const base = options.base ?? BASE;
+  const user = options.user ?? `${UPREFIX}_${i}`;
+  const password = options.password ?? PASS;
+  if (!password) throw new Error(`Password is required for bot ${i + 1}.`);
+  const name = (options.name ?? NAMES[i] ?? `Botto${i}`).replace(/[^a-z]/gi, '').slice(0, 16);
   const world = new World();
   const kit = CLASS_KITS[cls] ?? CLASS_KITS.warrior;
-  const conn = new Connection({ base: BASE, getAuth: (forceFresh) => authenticate(user, cls, name, forceFresh) });
+  const conn = new Connection({ base, getAuth: (forceFresh) => authenticate(base, user, password, cls, name, forceFresh) });
   const settings = { paused: false, mode: 'quest', lootCorpses: true, buyFood: true, helpOthers: true, autoEquip: true, bearForm: true, levelCap: 20 };
-  const bot = { i, cls, role: roleOf(cls), user, name, conn, world, action: 'старт', kit };
+  const bot = { id: `bot:${i}`, i, cls, role: roleOf(cls), user, name, conn, world, action: 'Starting…', kit };
   bot.ctx = {
     world, CLASS: cls, kit, range: 4, settings,
     cmd: (p) => conn.cmd(p), input: (mi, f) => conn.input(mi, f), now: () => Date.now(),
@@ -105,8 +111,8 @@ export function makeBot(i, cls) {
   return bot;
 }
 
-const FLEET_HTML = `<!doctype html><html lang="ru"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-<title>Флот ботов</title><style>
+const FLEET_HTML = `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Bot Fleet</title><style>
 :root{--bg:#16130d;--panel:#221d13;--bd:#4a3f28;--gold:#e8c873;--txt:#e8e0cf;--mut:#9c8f72}
 body{margin:0;background:linear-gradient(180deg,#1c1810,#0e0c08);color:var(--txt);font:14px/1.4 "Segoe UI",system-ui,sans-serif}
 .wrap{max-width:1080px;margin:0 auto;padding:14px}
@@ -124,20 +130,20 @@ th{color:var(--gold);text-transform:uppercase;font-size:11px;letter-spacing:.5px
 .log{height:240px;overflow:auto;font:12px/1.5 ui-monospace,Menlo,monospace;background:#0c0a06;border:1px solid var(--bd);border-radius:8px;padding:8px;margin-top:12px}
 .log .t{color:#6f6347}
 </style></head><body><div class="wrap">
-<h1>🛡 Флот ботов — World of Claudecraft</h1>
-<div class="phase" id="phase">Подключение…</div>
-<table><thead><tr><th></th><th>Имя</th><th>Класс / роль</th><th>Ур.</th><th>HP</th><th>Ресурс</th><th>Зона</th><th>Действие</th></tr></thead><tbody id="rows"></tbody></table>
+<h1>🛡 Bot Fleet — World of Claudecraft</h1>
+<div class="phase" id="phase">Connecting…</div>
+<table><thead><tr><th></th><th>Name</th><th>Class / role</th><th>Level</th><th>HP</th><th>Resource</th><th>Zone</th><th>Action</th></tr></thead><tbody id="rows"></tbody></table>
 <div class="log" id="log"></div>
 </div><script>
 const esc=s=>String(s).replace(/[&<>]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;'}[c]));
 const TOKEN='__DASH_TOKEN__';
 let ws;function connect(){ws=new WebSocket((location.protocol==='https:'?'wss':'ws')+'://'+location.host+'/dash?token='+encodeURIComponent(TOKEN));ws.onmessage=e=>render(JSON.parse(e.data));ws.onclose=()=>setTimeout(connect,2000);}
 function render(S){
- document.getElementById('phase').innerHTML='<b>Фаза:</b> '+esc(S.phaseRu||S.phase||'')+'  ·  '+esc(S.summary||'');
+ document.getElementById('phase').innerHTML='<b>Phase:</b> '+esc(S.phaseRu||S.phase||'')+'  ·  '+esc(S.summary||'');
  document.getElementById('rows').innerHTML=(S.bots||[]).map(b=>{
   const hpf=b.mhp?Math.round(100*b.hp/b.mhp):0, mpf=b.mres?Math.round(100*b.mana/b.mres):0;
   return '<tr><td><span class="dot'+(b.online?' on':'')+'"></span></td><td>'+esc(b.name)+'</td>'+
-   '<td class="role-'+b.role+'">'+esc(b.cls)+' · '+({tank:'танк',healer:'хил',dps:'дпс'}[b.role])+'</td>'+
+   '<td class="role-'+b.role+'">'+esc(b.cls)+' · '+({tank:'tank',healer:'healer',dps:'dps'}[b.role])+'</td>'+
    '<td>'+(b.level||'—')+'</td>'+
    '<td><div class="bar hp"><i style="width:'+hpf+'%"></i><span>'+(b.hp||0)+'/'+(b.mhp||0)+'</span></div></td>'+
    '<td><div class="bar mp"><i style="width:'+mpf+'%"></i><span>'+Math.round(b.mana||0)+'/'+(b.mres||0)+' '+esc(b.resName||'')+'</span></div></td>'+
@@ -149,16 +155,17 @@ function render(S){
 }connect();
 </script></body></html>`;
 
-const PHASE_RU = { forming: 'Сбор группы', leveling: 'Группой качаемся', travel: 'Идём в данж', dungeon: 'В подземелье', selling: 'Продаём лут' };
+const PHASE_RU = { forming: 'Forming party', leveling: 'Party leveling', travel: 'Traveling to dungeon', dungeon: 'In dungeon', selling: 'Selling loot' };
 
 process.on('uncaughtException', (e) => console.error('[uncaught]', e?.message ?? e));
 process.on('unhandledRejection', (e) => console.error('[unhandled]', e?.message ?? e));
 
 function main() {
+  if (!PASS) { console.error('[fleet] FATAL: FLEET_PASS is unset for a non-local server. Set it in .env.bot (see .env.bot.example).'); process.exit(1); }
   console.log(`Fleet — server=${BASE} classes=${CLASSES.join(',')}`);
   const bots = CLASSES.map((cls, i) => makeBot(i, cls));
   const logBuf = [];
-  const log = (msg) => { const d = new Date(); const t = [d.getHours(), d.getMinutes(), d.getSeconds()].map((n) => String(n).padStart(2, '0')).join(':'); logBuf.push({ t, msg }); if (logBuf.length > 150) logBuf.shift(); console.log(`[флот] ${msg}`); };
+  const log = (msg) => { const d = new Date(); const t = [d.getHours(), d.getMinutes(), d.getSeconds()].map((n) => String(n).padStart(2, '0')).join(':'); logBuf.push({ t, msg }); if (logBuf.length > 150) logBuf.shift(); console.log(`[fleet] ${msg}`); };
   // market-selling is a TOGGLE: OFF by default (set FLEET_SELL=1 to enable). When off, the fleet keeps
   // its loot instead of auto-listing rare/epic on the World Market — a separate, opt-in feature.
   const coord = new Coordinator(bots, log, { sell: process.env.FLEET_SELL === '1' });
@@ -170,8 +177,8 @@ function main() {
       log: logBuf,
       bots: bots.map((b) => {
         const s = b.world.self;
-        const resName = { mana: 'мана', rage: 'ярость', energy: 'энергия' }[s?.rtype] ?? '';
-        const zone = s ? (coord.inDungeon(b) ? 'Подземелье ⚔' : (zoneAt(s.z)?.name ?? '')) : '';
+        const resName = { mana: 'mana', rage: 'rage', energy: 'energy' }[s?.rtype] ?? '';
+        const zone = s ? (coord.inDungeon(b) ? 'Dungeon ⚔' : (zoneAt(s.z)?.name ?? '')) : '';
         return { name: b.name, cls: b.cls, role: b.role, online: b.conn.ready, action: b.action,
           level: s?.lv, hp: s?.hp, mhp: s?.mhp, mana: s?.res, mres: s?.mres, resName, zone };
       }),

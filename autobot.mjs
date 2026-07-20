@@ -41,7 +41,7 @@ async function rest(path, body, token, method = 'POST') {
 async function authenticate(forceFresh) {
   // reuse a cached disk token on (re)start instead of re-running /api/login — avoids the per-IP auth
   // rate limit. forceFresh=true (a rejected token) bypasses the cache and re-logs-in.
-  if (!forceFresh) { const c = loadToken(USER); if (c) { console.log(`[auth] кеш-токен для "${USER}"`); return { token: c.token, charId: c.charId }; } }
+  if (!forceFresh) { const c = loadToken(USER); if (c) { console.log(`[auth] cached token for "${USER}"`); return { token: c.token, charId: c.charId }; } }
   let r = await rest('/api/login', { username: USER, password: PASS });
   if (r.status !== 200) {
     r = await rest('/api/register', { username: USER, password: PASS });
@@ -83,12 +83,12 @@ export function makeSoloBot({ base = BASE, cls = CLASS, kit = KIT, name = NAME, 
 
   const session = { kills: 0, deaths: 0, questsDone: 0, xpGained: 0, baseCopper: null, start: Date.now() };
   const logBuf = [];
-  const pushLog = (msg) => { const d = new Date(); const t = [d.getHours(), d.getMinutes(), d.getSeconds()].map((n) => String(n).padStart(2, '0')).join(':'); logBuf.push({ t, msg }); if (logBuf.length > 150) logBuf.shift(); console.log(`[бот] ${msg}`); };
+  const pushLog = (msg) => { const d = new Date(); const t = [d.getHours(), d.getMinutes(), d.getSeconds()].map((n) => String(n).padStart(2, '0')).join(':'); logBuf.push({ t, msg }); if (logBuf.length > 150) logBuf.shift(); console.log(`[bot] ${msg}`); };
 
   const ctx = {
     world, CLASS: cls, kit, range: cls === 'druid' ? 24 : meleeRangeFor(cls), settings,  // druid root-kites as a caster (hold ground ~24yd); other melee = 4; pure casters = 24
     cmd: (p) => conn.cmd(p), input: (mi, f) => conn.input(mi, f), now: () => Date.now(),
-    setAction: (s) => { ctx.action = s; }, log: pushLog, action: 'Запуск…',
+    setAction: (s) => { ctx.action = s; }, log: pushLog, action: 'Starting…',
     nav: { stuck: 0, lastX: 0, lastZ: 0, wp: 0 }, dotUntil: new Map(), rootUntil: new Map(), buffThrottle: new Map(), buffSelfThrottle: new Map(), healThrottle: new Map(), helpLog: [], triedEquip: new Set(),
     potionCdUntil: 0, needRestock: false, zone: null, lastKill: Date.now(),
     deferredQuests: new Map(), // qid -> ts: a collect quest whose spot is barren/guarded; skip it
@@ -97,11 +97,11 @@ export function makeSoloBot({ base = BASE, cls = CLASS, kit = KIT, name = NAME, 
   };
 
   conn.onHello(() => {
-    pushLog('Вошёл в мир — начинаю играть');
+    pushLog('Entered the world — starting play.');
     if (process.env.BOT_DEV_LEVEL) setTimeout(() => { // local testing only (needs ALLOW_DEV_COMMANDS=1)
       conn.cmd({ cmd: 'dev_level', level: Number(process.env.BOT_DEV_LEVEL) });
       if (process.env.BOT_DEV_TP) { const [x, z] = process.env.BOT_DEV_TP.split(',').map(Number); conn.cmd({ cmd: 'dev_teleport', x, z }); }
-      pushLog(`[DEV] уровень ${process.env.BOT_DEV_LEVEL}${process.env.BOT_DEV_TP ? ', телепорт ' + process.env.BOT_DEV_TP : ''}`);
+      pushLog(`[DEV] level ${process.env.BOT_DEV_LEVEL}${process.env.BOT_DEV_TP ? ', teleport ' + process.env.BOT_DEV_TP : ''}`);
     }, 1500);
   });
   conn.onSnap((snap) => {
@@ -123,21 +123,21 @@ export function makeSoloBot({ base = BASE, cls = CLASS, kit = KIT, name = NAME, 
       }
       else if (ev.type === 'xp') session.xpGained += ev.amount ?? 0;
       else if (ev.type === 'levelup') {
-        pushLog(`🎉 НОВЫЙ УРОВЕНЬ: ${ev.level}!`);
+        pushLog(`🎉 LEVEL UP: ${ev.level}!`);
         ctx.triedEquip.clear();                                  // re-try any equip that transiently failed (a one-off reject shouldn't block re-equipping forever)
         ctx.deferredQuests?.clear(); ctx.tooHard?.clear();       // STRONGER now → retry collect/too-hard camps we skipped (tooHard also self-clears on the level change, this is just belt-and-braces)
       }
-      else if (ev.type === 'questDone') { session.questsDone++; pushLog(`✅ Квест выполнен: ${ruQuest(ev.questId)}`); }
-      else if (ev.type === 'questReady') pushLog(`Квест готов к сдаче: ${ruQuest(ev.questId)}`);
-      else if (ev.type === 'questAccepted') pushLog(`📜 Принят квест: ${ruQuest(ev.questId)}`);
+      else if (ev.type === 'questDone') { session.questsDone++; pushLog(`✅ Quest completed: ${ruQuest(ev.questId)}`); }
+      else if (ev.type === 'questReady') pushLog(`Quest ready to turn in: ${ruQuest(ev.questId)}`);
+      else if (ev.type === 'questAccepted') pushLog(`📜 Quest accepted: ${ruQuest(ev.questId)}`);
       else if (ev.type === 'playerDeath') {
         // Death is near-free (full-HP graveyard respawn, no xp/gold/durability loss). With the winnability
         // model (engageCost ≤ capacity) the bot doesn't pull packs it can't win, so deaths are rare; just
         // respawn and carry on — no death-block list, no death counter (a too-hard camp is skipped by the
         // live cost test + the level-keyed tooHard mark, not by counting deaths).
-        session.deaths++; pushLog('💀 Погиб — воскресаю на кладбище');
+        session.deaths++; pushLog('💀 Died — resurrecting at the graveyard.');
       }
-      else if (ev.type === 'partyInvite') { pushLog(`Приглашение в группу от ${ev.fromName} — принимаю`); conn.cmd({ cmd: 'paccept' }); }
+      else if (ev.type === 'partyInvite') { pushLog(`Party invitation from ${ev.fromName} — accepting.`); conn.cmd({ cmd: 'paccept' }); }
     }
   });
   // apply a dashboard control message to THIS bot's settings (shared allowlist in botstate.mjs).
@@ -216,13 +216,13 @@ export function makeSoloBot({ base = BASE, cls = CLASS, kit = KIT, name = NAME, 
     // nothing" case; 120s is well past a normal kill cadence (~30-90s), and out-level just grinds the safest
     // camp (harmless if it ever false-fires) and clears on the next level-up.
     const stuckAtCamp = deathsSinceXp >= 3 || now - lastXpMs > 120000;
-    if (stuckAtCamp && ctx.outLevelLv == null) { ctx.outLevelLv = s.lv ?? 1; pushLog('🪜 Камень не по зубам — откатываюсь на безопасный гринд, докачаюсь и вернусь'); }
+    if (stuckAtCamp && ctx.outLevelLv == null) { ctx.outLevelLv = s.lv ?? 1; pushLog('🪜 This camp is too difficult — returning to safe grinding until stronger.'); }
     if (ctx.outLevelLv != null && (s.lv ?? 1) > ctx.outLevelLv) ctx.outLevelLv = null;   // leveled up → resume quests
     ctx.outLevel = ctx.outLevelLv != null;
-    if (deathsSinceXp >= 6 && !deathLoopSoftReset) { pushLog('⚠ Цикл смертей без опыта — сбрасываю навигацию/память'); ctx.nav = { stuck: 0, lastX: 0, lastZ: 0, wp: (ctx.nav?.wp || 0) + 1, anchorX: undefined }; ctx.qmemo = {}; deathLoopSoftReset = true; }
+    if (deathsSinceXp >= 6 && !deathLoopSoftReset) { pushLog('⚠ Repeated deaths without XP — resetting navigation and quest memory.'); ctx.nav = { stuck: 0, lastX: 0, lastZ: 0, wp: (ctx.nav?.wp || 0) + 1, anchorX: undefined }; ctx.qmemo = {}; deathLoopSoftReset = true; }
     if (deathsSinceXp >= 12) { console.error('[watchdog] death-loop, 12+ deaths with no xp — recovering'); try { conn.close(); } catch {} onWedge(); return; }
     // (A) general-wedge escalation
-    if (now - lastProgressMs > 300000) { pushLog('⚠ Нет прогресса 5мин — сбрасываю навигацию'); ctx.nav = { stuck: 0, lastX: 0, lastZ: 0, wp: (ctx.nav?.wp || 0) + 1, anchorX: undefined }; ctx.qmemo = {}; lastProgressMs = now - 120000; }
+    if (now - lastProgressMs > 300000) { pushLog('⚠ No progress for 5 minutes — resetting navigation.'); ctx.nav = { stuck: 0, lastX: 0, lastZ: 0, wp: (ctx.nav?.wp || 0) + 1, anchorX: undefined }; ctx.qmemo = {}; lastProgressMs = now - 120000; }
     if (now - lastProgressMs > 600000) { console.error('[watchdog] no forward progress 10min — recovering'); try { conn.close(); } catch {} onWedge(); return; }
   }
 

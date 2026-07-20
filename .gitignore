@@ -12,6 +12,7 @@ node_modules/
 state.json
 deathblocks.json
 settings.json
+console-config.json
 lib/_*_bundle.mjs
 
 # ── OS / editor / tooling ───────────────────────────────────────────────

@@ -1,135 +1,82 @@
-# World of Claudecraft — autonomous bot + live dashboard
+# World of Claudecraft bot console
 
-A bot that plays the game by itself: levels via **quests + grinding**, heals and
-rests, **heals/buffs other players**, loots, restocks, and survives indefinitely
-(auto-reconnect, free graveyard rez, anti-stuck). It speaks the real client wire
-protocol (REST auth → WebSocket) and levels legitimately — no dev commands.
+An autonomous World of Claudecraft bot fleet with a local web dashboard. The bots can quest, grind, heal, loot, restock, equip upgrades, coordinate as a party, run dungeons, and optionally sell valuable loot.
 
-Comes with a **web dashboard** (real-time character info + Russian log + on/off
-settings) at `http://localhost:8088`.
+## Start
 
-## Run
+```bash
+./start.sh
+```
+
+Then open [http://localhost:8077](http://localhost:8077).
+
+The dashboard starts without requiring credentials. In the web interface:
+
+1. Choose how many bots to run, from zero through five.
+2. Enter a username, password, character name, and class for each enabled bot.
+3. Select **Save & start**.
+
+That is the primary and only required startup flow. `npm start` also starts the same console.
+
+The first run installs dependencies if `node_modules` is absent. Configuration is saved in the gitignored `console-config.json` with owner-only permissions. Saved passwords are never returned to the browser; leave a password field blank to keep its saved value.
+
+## Configuration
+
+The dashboard supports all nine classes:
+
+`warrior`, `paladin`, `hunter`, `rogue`, `priest`, `shaman`, `mage`, `warlock`, and `druid`.
+
+The game server defaults to `https://worldofclaudecraft.com` and can be changed in the dashboard. A party is limited to five members, so the console enforces a five-bot maximum.
+
+Optional environment variables:
+
+| Variable | Default | Purpose |
+|---|---|---|
+| `CONSOLE_PORT` | `8077` | Local dashboard port |
+| `DASH_HOST` | `127.0.0.1` | Dashboard bind address |
+| `DASH_TOKEN` | random per run | Dashboard WebSocket control token |
+| `SERVER_URL` | live realm | Initial server URL for a new configuration |
+| `BOT_COUNT` | `0` | Initial bot count for a new configuration |
+
+For safety, the dashboard binds only to loopback by default. Setting `DASH_HOST=0.0.0.0` exposes it to the network and should only be done on a trusted, protected host.
+
+## Long-running operation
+
+`./start.sh` runs in the foreground and is suitable for a terminal or service manager. The older scripts remain only for compatibility:
+
+- `run-console.sh` restarts the unified console after a crash.
+- `run-forever.sh` runs the legacy single-bot entry point.
+- `run-fleet.sh` runs the legacy fixed fleet entry point.
+
+New installations should use `./start.sh`.
+
+## Local development
 
 ```bash
 npm install
-node autobot.mjs                 # local server (needs npm run db:up && npm run server)
-# live realm:
-SERVER_URL=https://worldofclaudecraft.com node autobot.mjs
-# then open the dashboard:
-open http://localhost:8088
+npm test
 ```
 
-24/7 with auto-restart on crash (creds baked into the script):
+The default local game server URL used by legacy direct entry points is `http://localhost:8787`. The new console starts with the live URL unless changed in the dashboard or through `SERVER_URL` before the first saved configuration.
+
+Generated game data is committed in `lib/*.generated.mjs`. Refresh it only when the game source changes:
 
 ```bash
-nohup run-forever.sh >/dev/null 2>&1 &     # start, survives logout
-tail -f live.log                            # watch
-pkill -f run-forever.sh; pkill -f autobot.mjs   # stop
+GAME_SRC=/path/to/world-of-claudecraft npm run gen
+npm run gen:check
 ```
 
-## Dashboard (http://localhost:8088)
+## Project layout
 
-Live, updates ~3×/sec over WebSocket:
+- `start.sh` — primary dashboard-first launcher
+- `console.mjs` — configurable zero-to-five bot console
+- `fleet.mjs` — fleet bot factory and legacy standalone fleet
+- `autobot.mjs` — legacy standalone single bot
+- `lib/console_config.mjs` — validated credential and fleet configuration
+- `lib/dashboard.mjs` — local HTTP/WebSocket dashboard transport
+- `lib/fleet_coordinator.mjs` — party, dungeon, healing, and market coordination
+- `lib/brain.mjs` — autonomous combat, questing, survival, and navigation decisions
 
-- **Персонаж** — HP / мана / опыт bars, золото (g/s/c), позиция, текущая цель.
-- **Характеристики** — сила/ловкость/выносл./интеллект/дух/броня, сила атаки, крит.
-- **Экипировка** — что надето (оружие/грудь/ноги/ступни) с цветом качества.
-- **Инвентарь / лут** — предметы с количеством, цвет по качеству.
-- **Квесты** — активные квесты с прогрессом по целям.
-- **Сессия** — время, убийств, смертей, квестов, опыт и золото за сессию.
-- **Лог (live)** — что бот делает, по-русски.
-- **Настройки** (применяются мгновенно):
-  - **Режим**: Квесты (квесты+гринд) · Фарм мобов (без квестов) · Пассивный (только защита+помощь).
-  - **Подбирать лут** · **Покупать еду/воду** · **Помогать игрокам** · **Надевать апгрейды** · **Медвежья форма** (друид 10+).
-  - **Качаться до уровня** (2–20) — бот останавливается на этом уровне.
-  - **Пауза** — встать на месте (не выходя из мира).
-  - Также показывает: **зону**, **форму** (медведь/кот), **бафы**.
+## Live-realm note
 
-Настройки сохраняются в `settings.json` и переживают перезапуск. `DASH_PORT=9000` меняет порт дашборда (если 8088 занят, бот всё равно играет — просто без дашборда).
-
-## Env
-
-| var | default | meaning |
-|---|---|---|
-| `SERVER_URL` | `http://localhost:8787` | game server origin |
-| `BOT_CLASS` | `druid` | warrior\|paladin\|hunter\|rogue\|priest\|shaman\|mage\|warlock\|druid |
-| `BOT_USER`/`BOT_PASS` | auto | account (auto-registers if new) |
-| `BOT_NAME` | auto | character name (retries with suffix if taken) |
-| `DASH_PORT` | `8088` | dashboard port |
-
-## Layout
-
-```
-autobot.mjs            # entry: auth, connect, 5Hz loop, dashboard wiring, process guards
-run-forever.sh         # 24/7 crash-restart wrapper
-settings.json          # persisted settings (created/updated from the dashboard)
-lib/
-  connection.mjs       # WS+REST transport, reconnect/backoff, snapshot merge
-  world.mjs            # perception over the merged snapshot
-  brain.mjs            # priority tree (survive→help→loot→quest→grind), all-class combat, bear form, anti-stall
-  gamedata.mjs         # merges all zones; derives consumables; per-class kits; zone helpers
-  zone1.mjs zone2.mjs zone3.mjs   # per-zone quest/NPC/camp/object data (all 3 zones)
-  ru.mjs               # Russian names (mobs/quests/items) + XP table
-  *.generated.mjs      # game data projected from src/sim/data.ts by scripts/gen_bot_*.mjs (run `npm run gen`):
-                       #   mobs / items / abilities / vendors (buyGear stock+pos) /
-                       #   density (pack-density threat mult) / dungeons (party-door keep-out)
-  dashboard.mjs        # local HTTP+WS server + embedded dashboard page
-```
-
-## 5-bot fleet — dungeons + World Market (`fleet.mjs`)
-
-A coordinated party of 5 (default **warrior tank · priest + paladin heals · mage + rogue DPS**)
-that levels together, runs dungeons by role, farms bosses, and sells rare/epic on the market.
-
-```bash
-node fleet.mjs                       # local server; dashboard at http://localhost:8099
-SERVER_URL=https://worldofclaudecraft.com node fleet.mjs    # live
-nohup run-fleet.sh >/dev/null 2>&1 & # 24/7 (defaults to live)
-# fast local test (server with ALLOW_DEV_COMMANDS=1):
-FLEET_DEV_LEVEL=10 FLEET_DEV_TP="80,84" node fleet.mjs      # jumps the party to lvl 10 at the crypt door
-```
-
-How it works (`lib/fleet_coordinator.mjs`):
-- **Party + leash:** the leader (tank) navigates/levels via the normal brain; followers
-  leash to the leader, heal the party, and accept the same quests — so they level as a unit.
-- **Role combat (smart, not suicidal):** tank pulls one pack + holds threat (Thunder Clap);
-  DPS **focus-fire the tank's target** and **back off when they pull aggro**; healers keep the
-  lowest member up + pre-shield the tank; casters/healers stay out of the boss's AoE radius;
-  anyone critically low retreats. Wipe → free graveyard rez → re-enter.
-- **Dungeon plan:** Hollow Crypt (10) → Sunken Bastion (13) → Gravewyrm Sanctum / Korzul (19-20).
-  Does each when level-appropriate, levels via quests to bridge gaps, then **farms Korzul** at 20.
-- **Money:** loots the boss, then lists rare/epic on the **World Market** at The Merchant
-  (`market_list`, 5% cut), per the economy (Korzul ≈ 30-70k copper + epics; market sales are the big earners).
-- **Dashboard** (`:8099`): every member's role, level, HP, resource, zone, and live action + group log.
-
-Env: `FLEET_CLASSES` (csv), `FLEET_USER` (account prefix), `FLEET_PASS`, `FLEET_DASH_PORT`,
-`SERVER_URL`, and (local-only) `FLEET_DEV_LEVEL`/`FLEET_DEV_TP`.
-
-> On a public realm the fleet must level **from 1 legitimately** (no dev commands) — a long
-> haul before it can farm the top boss. 5 coordinated accounts are a bigger footprint than one;
-> check the project's rules. The dungeon/role/market logic is identical on a local server, where
-> `FLEET_DEV_LEVEL` lets you test boss farming instantly.
-
-## Coverage / notes
-
-- **All 3 zones** (Eastbrook 1-7, Mirefen 6-13, Thornpeak 13-20): 42 quests, 51 camps,
-  19 NPCs. The bot quests + grinds from level 1 to the **Качаться до уровня** cap (default 20),
-  walking north across zones automatically. Group/dungeon/rare quests (5-man bosses, rare
-  spawns) are auto-skipped; the bot never stalls on a quest it can't solo.
-- **All 9 classes** supported (per-class combat kits); druid additionally uses **bear form** at 10+.
-- **Resilience**: free graveyard rez, anti-stuck pathing, "no kill in 70s → seek easier mobs",
-  auto-reconnect, and process-level guards so an unexpected error never kills the bot
-  (the `run-forever.sh` loop is the last-resort backstop).
-- **Good citizen** on the live realm: skips mobs tapped by others, no PvP/duels, pro-social
-  healing. Note the optional `fleet.mjs` runs **5 accounts** (party leveling) — only the solo
-  `autobot.mjs` is single-account. Check the project Discord for any bot policy before long runs.
-- **Credentials** are never hardcoded: put them in `.env.bot` (copy `.env.bot.example`).
-  The dashboard binds to `127.0.0.1` and requires a per-run token (set `DASH_HOST=0.0.0.0` to expose it).
-- To regenerate the `lib/*.generated.mjs` data after a game update: `npm run gen` (esbuild-bundles the
-  game's `src/sim/data.ts`, projects each table, and re-stamps `gamedata.version.json`). Point at the game
-  source via `GAME_SRC=/path/to/world-of-claudecraft`, else the sibling checkout. `npm run gen:check` is the
-  staleness guard — it goes RED when the game source has drifted from the committed data (re-run `npm run gen`).
-  You don't need any of this just to run the bot — the generated files (`lib/*.generated.mjs`) are already
-  committed to this repo. `npm run gen` is only needed to refresh them after a game-data update, and it
-  requires the private game source checked out as a sibling directory (`../world-of-claudecraft`) or a
-  `GAME_SRC` env var pointing to it.
+The bots level through normal game actions and do not use development commands on the live realm. Running several coordinated accounts has a larger footprint than running one account; verify the realm's current automation policy before operating a fleet.
