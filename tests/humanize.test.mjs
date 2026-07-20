@@ -8,7 +8,7 @@
 // either signal alone keeps a solo bot under all tiers. We decay BOTH:
 //   • tick jitter   [130,380]ms  → combat-command interval stdDev (timing)
 //   • reaction hold [200,460]ms  → stimulus→command latency (reaction)
-// These constants MUST stay in sync with bot/autobot.mjs (the tick loop + the reaction-hold).
+// These constants MUST stay in sync with autobot.mjs (the tick loop + the reaction-hold).
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 

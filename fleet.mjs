@@ -2,10 +2,10 @@
 // role (tank/heal/dps), farm bosses, sell rare/epic on the World Market.
 // Levels legitimately (no dev commands) on a live realm. Dashboard at :8099.
 //
-//   node bot/fleet.mjs                                  # local server
-//   SERVER_URL=https://worldofclaudecraft.com node bot/fleet.mjs
+//   node fleet.mjs                                  # local server
+//   SERVER_URL=https://worldofclaudecraft.com node fleet.mjs
 //   # local fast test (server with ALLOW_DEV_COMMANDS=1):
-//   FLEET_DEV_LEVEL=10 FLEET_DEV_TP="80,84" node bot/fleet.mjs
+//   FLEET_DEV_LEVEL=10 FLEET_DEV_TP="80,84" node fleet.mjs
 //
 // Env: SERVER_URL, FLEET_CLASSES (csv, default warrior,priest,paladin,mage,rogue),
 //      FLEET_USER (prefix), FLEET_PASS, FLEET_DASH_PORT (8099).
@@ -29,7 +29,7 @@ export const CLASSES = CLASSES_RAW.slice(0, PARTY_MAX);
 const UPREFIX = process.env.FLEET_USER ?? 'sl_fleet';
 const IS_LOCAL = /localhost|127\.0\.0\.1/.test(BASE);
 // no weak shared default against a real server (was 'fleetpass123'). Local dev gets a throwaway
-// constant; a real server MUST supply FLEET_PASS via bot/.env.bot. (Distinct per-account passwords
+// constant; a real server MUST supply FLEET_PASS via .env.bot. (Distinct per-account passwords
 // are a follow-up — would need re-registering the live sl_fleet_* accounts.)
 const PASS = process.env.FLEET_PASS ?? (IS_LOCAL ? 'localdev_fleet_pw' : null);
 const DASH_PORT = Number(process.env.FLEET_DASH_PORT ?? 8099);
@@ -206,5 +206,5 @@ function main() {
   fleetLoop();
   process.on('SIGINT', () => { for (const b of bots) b.conn.close(); process.exit(0); });
 }
-// only auto-run when launched directly (node bot/fleet.mjs); NOT when imported by console.mjs.
+// Only auto-run when launched directly; do not run when imported by console.mjs.
 if (import.meta.url === pathToFileURL(process.argv[1] || '').href) main();

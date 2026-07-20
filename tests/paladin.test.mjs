@@ -1,7 +1,7 @@
 // Combat + talent invariants for the PALADIN rotation (Retribution plate bruiser). Verifies the
 // Seal→Judgement engine, the survival ladder (Lay on Hands → Divine Protection → fast heal), pack
 // tools (Consecration / Hammer of Justice), the corrected ability costs, and the talent build's gate
-// ordering. Run: `node --test "bot/tests/*.test.mjs"`.
+// ordering. Run: `npm test`.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { paladinRotate } from '../lib/brain.mjs';

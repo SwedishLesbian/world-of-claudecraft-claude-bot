@@ -1,5 +1,4 @@
-// Smoke suite for the deterministic core logic — run: `node --test bot/tests/*.test.mjs`
-// (the bare `node --test bot/tests/` directory form is broken on Node 24 — it tries to LOAD the dir).
+// Smoke suite for the deterministic core logic — run: `npm test`.
 // Guards the data + pure-function invariants this bot relies on (modes, ability costs, kit ranges,
 // quest soloability/skip, gear-reward path). Idea borrowed from the codex bot's heavy test coverage;
 // kept to fast, dependency-free, non-flaky assertions (no live server, no decide() mocking).

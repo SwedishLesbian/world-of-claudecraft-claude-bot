@@ -1,5 +1,5 @@
 // Combat-rotation invariants for the GENERIC (non-druid) loop. Kept in its own file so it doesn't
-// collide with concurrent edits to core.test.mjs. Run: `node --test "bot/tests/*.test.mjs"`.
+// collide with concurrent edits to core.test.mjs. Run: `npm test`.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { COND_ABILITY_GATE } from '../lib/brain.mjs';

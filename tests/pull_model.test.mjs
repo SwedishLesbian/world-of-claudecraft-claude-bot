@@ -1,6 +1,6 @@
 // The universal PULL MODEL — target selection grounded in the game's real aggro math (sim.ts), the core
 // of the v4.32 refactor. Verifies proximity/social joiner counting on real per-template radii, cleanest-
-// instance selection, the thin accept policy, and elite/boss skipping. Run: node --test bot/tests/*.test.mjs
+// instance selection, the thin accept policy, and elite/boss skipping. Run: `npm test`.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { World } from '../lib/world.mjs';

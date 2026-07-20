@@ -1,4 +1,4 @@
-// Regression tests for the 2026-06-16 audit fixes — run: `node --test bot/tests/*.test.mjs`
+// Regression tests for the 2026-06-16 audit fixes — run: `npm test`
 // Each test pins a root-cause fix so it can't silently regress.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';

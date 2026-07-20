@@ -2,8 +2,8 @@
 // quests + grinding + heal/help others + bear form + survival + live dashboard.
 // Levels legitimately (no dev commands). Dashboard at http://localhost:8088.
 //
-//   node bot/autobot.mjs            # then open http://localhost:8088
-//   SERVER_URL=https://worldofclaudecraft.com node bot/autobot.mjs
+//   node autobot.mjs            # then open http://localhost:8088
+//   SERVER_URL=https://worldofclaudecraft.com node autobot.mjs
 //
 // Env: SERVER_URL, BOT_CLASS (default druid), BOT_USER/BOT_PASS, BOT_NAME, DASH_PORT (8088).
 import fs from 'node:fs';
@@ -13,7 +13,7 @@ import { World } from './lib/world.mjs';
 import { decide } from './lib/brain.mjs';
 import { Dashboard } from './lib/dashboard.mjs';
 import { CLASS_KITS, meleeRangeFor } from './lib/gamedata.mjs';
-import { ruQuest } from './lib/ru.mjs';
+import { questName } from './lib/english.mjs';
 import { atomicWrite, richState, applySetting } from './lib/botstate.mjs';
 
 const BASE = process.env.SERVER_URL ?? 'http://localhost:8787';
@@ -26,9 +26,9 @@ const letters = (s) => s.replace(/[0-9]/g, (d) => 'abcdefghij'[Number(d)]);
 const USER = process.env.BOT_USER ?? `bot_${uniq}`;
 const IS_LOCAL = /localhost|127\.0\.0\.1/.test(BASE);
 // no weak shared default against a real server: local dev gets a throwaway constant, anything else
-// MUST supply BOT_PASS (from bot/.env.bot). Prevents 'botpass123' from guarding a live account.
+// MUST supply BOT_PASS (from .env.bot). Prevents a weak default from guarding a live account.
 const PASS = process.env.BOT_PASS ?? (IS_LOCAL ? `localdev_${uniq}` : null);
-if (!PASS) { console.error('[auth] FATAL: BOT_PASS is unset for a non-local server. Set it in bot/.env.bot (see bot/.env.bot.example).'); process.exit(1); }
+if (!PASS) { console.error('[auth] FATAL: BOT_PASS is unset for a non-local server. Set it in .env.bot (see .env.bot.example).'); process.exit(1); }
 const NAME = (process.env.BOT_NAME ?? `Claudruid${letters(uniq)}`).replace(/[^a-z]/gi, '').slice(0, 16);
 const host = BASE.replace(/^https?:\/\//, '');
 const SETTINGS_FILE = new URL('./settings.json', import.meta.url);
@@ -68,9 +68,8 @@ process.on('unhandledRejection', (e) => console.error('[unhandled]', e?.message 
 
 // makeSoloBot: build ONE solo bot (connection + world + ctx + event handlers + buildState + tick +
 // watchdog) and return a handle. The CALLER attaches a Dashboard and drives the loops — so both
-// autobot.mjs (standalone, below) and bot/console.mjs (the unified multi-bot launcher) reuse it verbatim.
-// onWedge runs when the watchdog gives up (default: exit the process so run-forever.sh restarts; the
-// console passes a soft-recover so one wedged bot doesn't kill the others).
+// autobot.mjs and console.mjs reuse it verbatim. onWedge runs when the watchdog gives up;
+// the console passes a soft recovery so one wedged bot does not stop the others.
 export function makeSoloBot({ base = BASE, cls = CLASS, kit = KIT, name = NAME, getAuth = authenticate,
     settingsFile = SETTINGS_FILE, stateFile = STATE_FILE,
     onWedge = () => process.exit(1) } = {}) {
@@ -127,9 +126,9 @@ export function makeSoloBot({ base = BASE, cls = CLASS, kit = KIT, name = NAME, 
         ctx.triedEquip.clear();                                  // re-try any equip that transiently failed (a one-off reject shouldn't block re-equipping forever)
         ctx.deferredQuests?.clear(); ctx.tooHard?.clear();       // STRONGER now → retry collect/too-hard camps we skipped (tooHard also self-clears on the level change, this is just belt-and-braces)
       }
-      else if (ev.type === 'questDone') { session.questsDone++; pushLog(`✅ Quest completed: ${ruQuest(ev.questId)}`); }
-      else if (ev.type === 'questReady') pushLog(`Quest ready to turn in: ${ruQuest(ev.questId)}`);
-      else if (ev.type === 'questAccepted') pushLog(`📜 Quest accepted: ${ruQuest(ev.questId)}`);
+      else if (ev.type === 'questDone') { session.questsDone++; pushLog(`✅ Quest completed: ${questName(ev.questId)}`); }
+      else if (ev.type === 'questReady') pushLog(`Quest ready to turn in: ${questName(ev.questId)}`);
+      else if (ev.type === 'questAccepted') pushLog(`📜 Quest accepted: ${questName(ev.questId)}`);
       else if (ev.type === 'playerDeath') {
         // Death is near-free (full-HP graveyard respawn, no xp/gold/durability loss). With the winnability
         // model (engageCost ≤ capacity) the bot doesn't pull packs it can't win, so deaths are rare; just
@@ -170,12 +169,12 @@ export function makeSoloBot({ base = BASE, cls = CLASS, kit = KIT, name = NAME, 
   // 24/7 forward-progress watchdog: a silent wedge (stuck nav, frozen state, quest deadlock, half-open
   // socket) shows up as the ABSENCE of any "am I playing?" signal — xp gain, real movement, or a recent
   // kill. Soft-recover by resetting navigation + quest memory; if still wedged, exit cleanly so
-  // run-forever.sh restarts a fresh process (deathblocks persist). Universal (no mob/coords), thresholds
+  // The caller starts a fresh process after an unrecoverable wedge. Universal (no mob/coords), thresholds
   // set well above the longest legit idle (rest + corpse-run + vendor trip all involve movement/xp).
   // Three independent guards: (A) GENERAL wedge = no movement/xp/recent-kill; (B) DEATH-LOOP = deaths
   // piling up with NO level/xp gain (the spiral that movement+death used to MASK — both reset the old
   // timer every cycle); (C) CONNECTION backstop = never reached 'ready' at boot (the old `if(!s) return`
-  // meant a never-connected zombie could never trip an exit, defeating run-forever.sh).
+  // meant a never-connected zombie could never trip an exit).
   let lastProgressMs = Date.now(), lastPos = null, lastXp = -1, lastLv = -1;
   let deathsAtProgress = 0, deathLoopSoftReset = false, bootMs = Date.now(), everReady = false, lastXpMs = Date.now();
   // the CALLER runs this on a ~5s interval. On an unrecoverable wedge it calls onWedge() (default: exit).
@@ -191,7 +190,7 @@ export function makeSoloBot({ base = BASE, cls = CLASS, kit = KIT, name = NAME, 
     if (moved || progressed || (now - (ctx.lastKill ?? 0) < 120000)) lastProgressMs = now; // (A) — NOT s.dead (death+walk-back IS the spiral)
     lastPos = { x: s.x, z: s.z };
     // durable state snapshot (codex persistence.mjs idea): one JSON file always reflecting the live bot, so
-    // a human/another tool can `cat bot/state.json` for level/hp/xp/gold/action/zone/k-d + uptime without
+    // a human or another tool can inspect state.json for level/hp/xp/gold/action/zone/k-d + uptime without
     // attaching to the WS dashboard — and it survives a crash for post-mortem ("what was it doing?").
     try {
       atomicWrite(stateFile, JSON.stringify({
@@ -229,7 +228,7 @@ export function makeSoloBot({ base = BASE, cls = CLASS, kit = KIT, name = NAME, 
   return { id: 'solo', name, cls, role: 'solo', conn, world, ctx, session, logBuf, settings, saveSettings, buildState, applyControl, tick, watchdogTick, pushLog, start: () => conn.start() };
 }
 
-// standalone solo bot: makeSoloBot + its own Dashboard + the drive loops (unchanged behavior).
+// Direct single-bot mode: makeSoloBot plus its own dashboard and drive loops.
 function main() {
   console.log(`World of Claudecraft autobot v3 — server=${BASE} class=${CLASS} name=${NAME}`);
   const dash = new Dashboard(DASH_PORT);
@@ -244,7 +243,7 @@ function main() {
   // interval variance + instant reactions → flagged. Jittering the tick to [130,380]ms makes
   // combat-command intervals carry stdDev ~75ms (≥50 → the timing evidence DECAYS) and pushes the
   // event→command reaction to a median ~255ms (≥150 → the reaction evidence DECAYS) — a human-
-  // shaped timing profile. (bot/ is a client, NOT src/sim, so Math.random is fine here — the
+  // shaped timing profile. (This repository is a client, not src/sim, so Math.random is fine here — the
   // no-Math.random determinism invariant is sim-only.)
   const TICK_MIN = 130, TICK_MAX = 380;
   const loop = () => {
@@ -257,5 +256,5 @@ function main() {
   setInterval(() => bot.watchdogTick(), 5000).unref();
   process.on('SIGINT', () => { bot.conn.close(); process.exit(0); });
 }
-// only auto-run when launched directly (node bot/autobot.mjs); NOT when imported by console.mjs.
+// Only auto-run when launched directly; do not run when imported by console.mjs.
 if (import.meta.url === pathToFileURL(process.argv[1] || '').href) main();

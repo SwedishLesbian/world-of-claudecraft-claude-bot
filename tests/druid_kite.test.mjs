@@ -1,6 +1,6 @@
 // Root-kite combat invariants for the DRUID rotation (caster-primary). Verifies the decision logic
 // that makes a solo druid take ~0 damage: Entangling Roots locks a single target, we nuke from range,
-// and bear form is reserved for the 2+-mob emergency. Run: `node --test "bot/tests/*.test.mjs"`.
+// and bear form is reserved for the 2+-mob emergency. Run: `npm test`.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { druidRotate } from '../lib/brain.mjs';

@@ -11,7 +11,7 @@ import { writeFileSync, rmSync, existsSync } from 'node:fs';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { dirname, resolve } from 'node:path';
 
-const root = resolve(dirname(fileURLToPath(import.meta.url)), '..');     // = the bot/ folder (this script is in bot/scripts/)
+const root = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const GAME = process.env.GAME_SRC || resolve(root, '..', 'world-of-claudecraft');
 if (!existsSync(resolve(GAME, 'src/sim'))) { console.error(`[gen] game source not found at ${GAME} — set GAME_SRC=/path/to/world-of-claudecraft`); process.exit(1); }
 const tmp = resolve(root, 'lib/_vendors_bundle.mjs');

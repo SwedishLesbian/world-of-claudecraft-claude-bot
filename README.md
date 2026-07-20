@@ -40,15 +40,21 @@ Optional environment variables:
 
 For safety, the dashboard binds only to loopback by default. Setting `DASH_HOST=0.0.0.0` exposes it to the network and should only be done on a trusted, protected host.
 
+## Live-realm authentication
+
+The live realm protects login with Cloudflare Turnstile. Capture a reusable server token in a real browser before starting a bot account:
+
+```bash
+cp .env.bot.example .env.bot
+# Set BOT_USER, BOT_PASS, and BOT_CLASS in .env.bot.
+npm run get-token
+```
+
+Complete Turnstile and select **Log In** in the browser window. The script stores the resulting token in the gitignored `.tokens/` directory with owner-only permissions. Tokens typically remain valid for about one week; repeat this step if authentication begins returning HTTP 403. Use `HEADLESS=1` only if necessary because Turnstile often blocks headless browsers.
+
 ## Long-running operation
 
-`./start.sh` runs in the foreground and is suitable for a terminal or service manager. The older scripts remain only for compatibility:
-
-- `run-console.sh` restarts the unified console after a crash.
-- `run-forever.sh` runs the legacy single-bot entry point.
-- `run-fleet.sh` runs the legacy fixed fleet entry point.
-
-New installations should use `./start.sh`.
+`./start.sh` runs in the foreground and is suitable for a terminal or service manager. It is the repository's only launcher.
 
 ## Local development
 
@@ -57,7 +63,7 @@ npm install
 npm test
 ```
 
-The default local game server URL used by legacy direct entry points is `http://localhost:8787`. The new console starts with the live URL unless changed in the dashboard or through `SERVER_URL` before the first saved configuration.
+The console starts with the live-realm URL unless changed in the dashboard or through `SERVER_URL` before the first saved configuration.
 
 Generated game data is committed in `lib/*.generated.mjs`. Refresh it only when the game source changes:
 
@@ -70,8 +76,9 @@ npm run gen:check
 
 - `start.sh` — primary dashboard-first launcher
 - `console.mjs` — configurable zero-to-five bot console
-- `fleet.mjs` — fleet bot factory and legacy standalone fleet
-- `autobot.mjs` — legacy standalone single bot
+- `fleet.mjs` — fleet bot factory used by the console
+- `autobot.mjs` — reusable autonomous bot implementation
+- `get-token.mjs` — interactive live-realm authentication helper
 - `lib/console_config.mjs` — validated credential and fleet configuration
 - `lib/dashboard.mjs` — local HTTP/WebSocket dashboard transport
 - `lib/fleet_coordinator.mjs` — party, dungeon, healing, and market coordination

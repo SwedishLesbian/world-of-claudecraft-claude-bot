@@ -12,8 +12,8 @@ import { fileURLToPath, pathToFileURL } from 'node:url';
 import { dirname, resolve } from 'node:path';
 import { affixesFromTemplate } from '../lib/affixes.mjs';
 
-const root = resolve(dirname(fileURLToPath(import.meta.url)), '..');     // = the bot/ folder (this script is in bot/scripts/)
-// The game source lives SEPARATELY now (the bot is standalone). Point at it via GAME_SRC, else the sibling
+const root = resolve(dirname(fileURLToPath(import.meta.url)), '..');
+// The game source lives separately. Point at it via GAME_SRC, otherwise use the sibling
 // ~/Documents/world-of-claudecraft. Generation is build-time only — the bot RUNS without it.
 const GAME = process.env.GAME_SRC || resolve(root, '..', 'world-of-claudecraft');
 if (!existsSync(resolve(GAME, 'src/sim'))) { console.error(`[gen] game source not found at ${GAME} — set GAME_SRC=/path/to/world-of-claudecraft`); process.exit(1); }

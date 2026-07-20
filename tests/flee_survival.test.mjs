@@ -1,7 +1,7 @@
 // FLEE SURVIVAL — the universal "separate running from healing" fix. While fleeing a pack the bot must
 // issue ONLY instant survival (a cast-time spell is cancelled by the run → the old run⇄cast-heal⇄run
 // stutter that got it caught and killed). Verifies CLASS_SURVIVAL is instant-by-construction and that
-// fleeSurvival never issues a cast-time heal for any class. Run: `node --test "bot/tests/*.test.mjs"`.
+// fleeSurvival never issues a cast-time heal for any class. Run: `npm test`.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { fleeSurvival } from '../lib/brain.mjs';
