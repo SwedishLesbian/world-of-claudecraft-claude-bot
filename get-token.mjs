@@ -9,13 +9,13 @@
 // Run:  node get-token.mjs             (visible browser; recommended)
 //       HEADLESS=1 node get-token.mjs  (Turnstile often blocks headless browsers)
 //
-// Credentials come from .env.bot (BOT_USER/BOT_PASS) or the process environment.
+// Credentials come from the dashboard configuration, .env.bot, or the process environment.
 
 import fs from 'node:fs';
-import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import puppeteer from 'puppeteer-core';
+import { findChromium, resolveBrowserAccount } from './lib/token_browser_config.mjs';
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 
@@ -29,39 +29,12 @@ try {
 } catch {}
 
 const BASE = (process.env.SERVER_URL ?? 'https://worldofclaudecraft.com').replace(/\/$/, '');
-const USER = process.env.BOT_USER ?? 'sl_autodruid71';
-const PASS = process.env.BOT_PASS;
-const CLASS = (process.env.BOT_CLASS ?? 'druid').toLowerCase();
+let account;
+try { account = resolveBrowserAccount({ env: process.env, configFile: path.join(HERE, 'console-config.json') }); }
+catch (error) { console.error('[token] ERROR:', error.message); process.exit(1); }
+const { username: USER, password: PASS, className: CLASS, characterName: CHARACTER_NAME } = account;
 const HEADLESS = process.env.HEADLESS === '1';
 const WAIT_MS = Number(process.env.TURNSTILE_WAIT_MS ?? 240000); // Allow up to four minutes for Turnstile.
-
-if (!PASS) { console.error('FATAL: BOT_PASS is not set in .env.bot or the environment.'); process.exit(1); }
-
-// Locate a browser using CHROMIUM_PATH, the Playwright cache, or a system browser.
-function findChromium() {
-  if (process.env.CHROMIUM_PATH) return process.env.CHROMIUM_PATH;
-  // Check the Playwright cache first.
-  const root = path.join(os.homedir(), 'Library/Caches/ms-playwright');
-  let dirs = [];
-  try { dirs = fs.readdirSync(root).filter((d) => /^chromium-\d+$/.test(d)); } catch {}
-  dirs.sort((a, b) => Number(b.split('-')[1]) - Number(a.split('-')[1]));
-  for (const d of dirs) {
-    for (const c of [
-      path.join(root, d, 'chrome-mac-arm64/Google Chrome for Testing.app/Contents/MacOS/Google Chrome for Testing'),
-      path.join(root, d, 'chrome-mac/Chromium.app/Contents/MacOS/Chromium'),
-    ]) if (fs.existsSync(c)) return c;
-  }
-  // Fall back to browsers installed on macOS. A normal browser profile is more
-  // likely to pass Cloudflare checks than a headless build.
-  for (const c of [
-    '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome',
-    '/Applications/Google Chrome Canary.app/Contents/MacOS/Google Chrome Canary',
-    '/Applications/Chromium.app/Contents/MacOS/Chromium',
-    '/Applications/Brave Browser.app/Contents/MacOS/Brave Browser',
-    '/Applications/Microsoft Edge.app/Contents/MacOS/Microsoft Edge',
-  ]) if (fs.existsSync(c)) return c;
-  throw new Error('Chrome/Chromium was not found. Install Google Chrome or set CHROMIUM_PATH to the browser executable.');
-}
 
 // Write the token in the format expected by connection.mjs.
 function saveToken(token, charId) {
@@ -76,7 +49,7 @@ function saveToken(token, charId) {
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
 (async () => {
-  const exe = findChromium();
+  const exe = findChromium(process.env, process.platform);
   console.log(`[token] Chromium: ${exe}`);
   console.log(`[token] server: ${BASE}  username: ${USER}  class: ${CLASS}`);
   console.log(`[token] mode: ${HEADLESS ? 'headless (Turnstile may block it)' : 'visible browser (complete the Turnstile checkbox if prompted)'}`);
@@ -85,8 +58,8 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
     executablePath: exe,
     headless: HEADLESS,
     userDataDir: path.join(HERE, '.cf-profile'), // Reuse the profile to reduce repeat Cloudflare challenges.
-    args: ['--no-sandbox', '--disable-blink-features=AutomationControlled', '--window-size=520,760'],
-    defaultViewport: null,
+    args: ['--no-sandbox', '--disable-blink-features=AutomationControlled', '--window-size=1280,960'],
+    defaultViewport: { width: 1280, height: 900 },
   });
 
   let serverToken = null;
@@ -94,13 +67,24 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
   try {
     const page = (await browser.pages())[0] ?? (await browser.newPage());
 
+    // A successful login can survive in the persistent browser profile. Reuse
+    // the bearer token from its character request instead of forcing another login.
+    page.on('request', (request) => {
+      try {
+        if (/\/api\/characters$/.test(request.url())) {
+          const authorization = request.headers().authorization ?? '';
+          if (/^Bearer\s+\S+$/i.test(authorization)) serverToken ||= authorization.replace(/^Bearer\s+/i, '');
+        }
+      } catch {}
+    });
+
     // Capture the server token directly from the login or registration response.
     page.on('response', async (resp) => {
       try {
         const u = resp.url();
         if (/\/api\/(login|register)$/.test(u)) {
           const b = await resp.json().catch(() => ({}));
-          console.log(`[token] ← ${resp.status()} ${u.replace(BASE, '')} ${JSON.stringify(b).slice(0, 120)}`);
+          console.log(`[token] ← ${resp.status()} ${u.replace(BASE, '')}${b?.error ? ` error=${String(b.error).slice(0, 80)}` : ''}`);
           if (resp.status() === 200 && b && b.token) { serverToken = b.token; console.log('[token] ✓ captured server token'); }
         }
       } catch {}
@@ -153,6 +137,7 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
     // Wait for the token and periodically report Turnstile state.
     const deadline = Date.now() + WAIT_MS;
     let tick = 0;
+    let submittedToken = '';
     while (Date.now() < deadline && !serverToken) {
       if (tick++ % 5 === 0) {
         const st = await page.evaluate(() => {
@@ -164,6 +149,15 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
           return { hasWidget: !!iframe, tokenLen: (resp || (hidden && hidden.value) || '').length, err: (document.getElementById('login-error')?.textContent || '').trim().slice(0, 80) };
         }).catch(() => ({}));
         console.log(`[token] Turnstile: widget=${st.hasWidget ? 'present' : 'NOT FOUND'} token=${st.tokenLen || 0} chars${st.err ? '  form error: ' + st.err : ''}`);
+      }
+      const turnstileToken = await page.evaluate(() => {
+        try { return (window.turnstile && window.turnstile.getResponse && window.turnstile.getResponse()) || ''; } catch { return ''; }
+      }).catch(() => '');
+      if (turnstileToken && turnstileToken !== submittedToken) {
+        submittedToken = turnstileToken;
+        await page.focus('#login-pass');
+        await page.keyboard.press('Enter');
+        console.log('[token] Turnstile completed; submitted the login form once.');
       }
       await sleep(1000);
     }
@@ -179,8 +173,19 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
     }, serverToken);
 
     const list = chars.body.characters ?? [];
-    const ch = list.find((c) => c.class === CLASS) ?? list[0];
-    if (!ch) throw new Error(`No characters found: ${chars.status} ${JSON.stringify(chars.body)}`);
+    let ch = list.find((c) => c.class === CLASS) ?? list[0];
+    if (!ch) {
+      const created = await page.evaluate(async (token, name, className) => {
+        const r = await fetch('/api/characters', {
+          method: 'POST', headers: { Authorization: 'Bearer ' + token, 'Content-Type': 'application/json' },
+          body: JSON.stringify({ name, class: className }),
+        });
+        return { status: r.status, body: await r.json().catch(() => ({})) };
+      }, serverToken, CHARACTER_NAME, CLASS);
+      if (created.status !== 200) throw new Error(`Character creation failed: ${created.status} ${JSON.stringify(created.body)}`);
+      ch = created.body;
+      console.log(`[token] created configured ${CLASS} character`);
+    }
     console.log(`[token] character: ${ch.name} (id ${ch.id}, ${ch.class}, level ${ch.level})`);
 
     const file = saveToken(serverToken, ch.id);

@@ -16,6 +16,8 @@ The dashboard starts without requiring credentials. In the web interface:
 2. Enter a username, password, character name, and class for each enabled bot.
 3. Select **Save & start**.
 
+While bots are running, expand **Live tactical viewport** to watch the selected bot, nearby creatures, players, NPCs, loot, targets, and aggro update in real time. Select a table row or use the viewport selector to switch bots; **Fullscreen** enlarges the view.
+
 That is the primary and only required startup flow. `npm start` also starts the same console.
 
 The first run installs dependencies if `node_modules` is absent. Configuration is saved in the gitignored `console-config.json` with owner-only permissions. Saved passwords are never returned to the browser; leave a password field blank to keep its saved value.
@@ -42,15 +44,13 @@ For safety, the dashboard binds only to loopback by default. Setting `DASH_HOST=
 
 ## Live-realm authentication
 
-The live realm protects login with Cloudflare Turnstile. Capture a reusable server token in a real browser before starting a bot account:
+The live realm protects login with Cloudflare Turnstile. Capture a reusable server token in a real browser before starting a bot account. The helper uses the first enabled account saved in the dashboard by default:
 
 ```bash
-cp .env.bot.example .env.bot
-# Set BOT_USER, BOT_PASS, and BOT_CLASS in .env.bot.
 npm run get-token
 ```
 
-Complete Turnstile and select **Log In** in the browser window. The script stores the resulting token in the gitignored `.tokens/` directory with owner-only permissions. Tokens typically remain valid for about one week; repeat this step if authentication begins returning HTTP 403. Use `HEADLESS=1` only if necessary because Turnstile often blocks headless browsers.
+Complete Turnstile in the browser window. Once the challenge supplies a response, the helper submits the login form once and stores the resulting token in the gitignored `.tokens/` directory with owner-only permissions. Tokens typically remain valid for about one week; repeat this step if authentication begins returning HTTP 403. Use `TOKEN_BOT_INDEX=2 npm run get-token` to select another enabled dashboard account. `BOT_USER`, `BOT_PASS`, and `BOT_CLASS` remain available as an alternative. Use `HEADLESS=1` only if necessary because Turnstile often blocks headless browsers.
 
 ## Long-running operation
 
