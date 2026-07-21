@@ -29,5 +29,6 @@ When these sources materially conflict, stop and ask rather than silently choosi
 
 - Keep operational instructions in `README.md` and architectural/security reasoning near the implementation when it prevents misuse.
 - Preserve unrelated working-tree changes.
+- If `gh auth status` reports an authentication failure inside the sandbox, retry it with approved execution outside the sandbox before concluding that GitHub credentials are invalid.
 - This is an informal repository: direct commits and pushes to the current/default branch are acceptable. Do not create a pull request unless the user explicitly requests one.
 - Report validation performed and any unavailable validation at handoff.
